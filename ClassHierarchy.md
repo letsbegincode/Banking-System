@@ -276,13 +276,14 @@
 │  │  Methods:                                                                   │   │
 │  │  • createAccount(String, String, double): Account                           │   │
 │  │  • closeAccount(int): boolean                                               │   │
+│  │  • updateAccountHolderName(int, String): boolean                            │   │
 │  │  • getAccount(int): Account                                                 │   │
 │  │  • getAllAccounts(): List<Account>                                          │   │
 │  │  • getAccountsByType(String): List<Account>                                 │   │
 │  │  • searchAccounts(String): List<Account>                                    │   │
-│  │  • queueOperation(AccountOperation): void                                   │   │
+│  │  • queueOperation(AccountOperation): CompletableFuture<OperationResult>     │   │
 │  │  • executePendingOperations(): void                                         │   │
-│  │  • addInterestToAllSavingsAccounts(): void                                  │   │
+│  │  • addInterestToAllSavingsAccounts(): int                                   │   │
 │  │  • addObserver(AccountObserver): void                                       │   │
 │  │  • notifyObservers(String): void                                            │   │
 │  └─────────────────────────────────────────────────────────────────────────────┘   │
