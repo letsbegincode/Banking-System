@@ -1,1 +1,12 @@
+<<<<<<< HEAD
 temp.md
+=======
+# Build outputs
+*.class
+*.ser
+
+# IDE artifacts
+.idea/
+*.iml
+.vscode/
+>>>>>>> origin/pr/6

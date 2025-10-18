@@ -1,6 +1,7 @@
 package banking.ui;
 
-<<<<<<< HEAD
+<<<<<<<HEAD
+
 import banking.account.Account;
 import banking.account.CurrentAccount;
 import banking.account.FixedDepositAccount;
@@ -151,15 +152,15 @@ public class ConsoleUI {
 
         System.out.println(ANSI_CYAN + ANSI_BOLD + "\n===== ALL ACCOUNTS =====" + ANSI_RESET);
         System.out.println(ANSI_CYAN
-            + String.format("%-6s %-20s %-15s %-15s", "ACC#", "NAME", "TYPE", "BALANCE")
-            + ANSI_RESET);
+                + String.format("%-6s %-20s %-15s %-15s", "ACC#", "NAME", "TYPE", "BALANCE")
+                + ANSI_RESET);
 
         for (Account account : accounts) {
             System.out.println(String.format("%-6d %-20s %-15s %-15.2f",
-                account.getAccountNumber(),
-                account.getUserName(),
-                account.getAccountType(),
-                account.getBalance()));
+                    account.getAccountNumber(),
+                    account.getUserName(),
+                    account.getAccountType(),
+                    account.getBalance()));
         }
     }
 
@@ -278,23 +279,23 @@ public class ConsoleUI {
         System.out.println(ANSI_UNDERLINE + "Account Number: " + account.getAccountNumber() + ANSI_RESET);
 
         System.out.println(ANSI_CYAN
-            + String.format("%-10s %-15s %-12s %-25s", "ID", "TYPE", "AMOUNT", "DATE/TIME")
-            + ANSI_RESET);
+                + String.format("%-10s %-15s %-12s %-25s", "ID", "TYPE", "AMOUNT", "DATE/TIME")
+                + ANSI_RESET);
 
         for (BaseTransaction transaction : transactions) {
             String amountStr = String.format("%.2f", transaction.getAmount());
             boolean isCredit = transaction.getType().contains("Deposit")
-                || transaction.getType().contains("Interest")
-                || transaction.getType().contains("Received");
+                    || transaction.getType().contains("Interest")
+                    || transaction.getType().contains("Received");
             String colorCode = isCredit ? ANSI_GREEN : ANSI_RED;
 
             System.out.println(colorCode
-                + String.format("%-10s %-15s %-12s %-25s",
-                transaction.getTransactionId(),
-                transaction.getType(),
-                amountStr,
-                transaction.getDateTime())
-                + ANSI_RESET);
+                    + String.format("%-10s %-15s %-12s %-25s",
+                            transaction.getTransactionId(),
+                            transaction.getType(),
+                            amountStr,
+                            transaction.getDateTime())
+                    + ANSI_RESET);
         }
     }
 
@@ -342,13 +343,13 @@ public class ConsoleUI {
         }
 
         System.out.println(ANSI_CYAN + String.format("%-10s %-15s %-12s %-25s", "ID", "TYPE", "AMOUNT", "DATE/TIME")
-            + ANSI_RESET);
+                + ANSI_RESET);
         for (BaseTransaction transaction : filteredTransactions) {
             System.out.println(String.format("%-10s %-15s %-12.2f %-25s",
-                transaction.getTransactionId(),
-                transaction.getType(),
-                transaction.getAmount(),
-                transaction.getDateTime()));
+                    transaction.getTransactionId(),
+                    transaction.getType(),
+                    transaction.getAmount(),
+                    transaction.getDateTime()));
         }
     }
 
@@ -411,16 +412,16 @@ public class ConsoleUI {
         System.out.println(ANSI_BOLD + "Fixed Deposit Accounts: " + ANSI_RESET + fixedDepositAccounts);
         System.out.println(ANSI_BOLD + "Total Balance: " + ANSI_RESET + String.format("%.2f", totalBalance));
         System.out.println(ANSI_BOLD + "Average Balance: " + ANSI_RESET
-            + String.format("%.2f", totalBalance / totalAccounts));
+                + String.format("%.2f", totalBalance / totalAccounts));
     }
 
     private void generateHighValueAccountsReport() {
         double threshold = getDoubleInput("Enter balance threshold for high-value accounts: ");
 
         List<Account> highValueAccounts = bank.getAllAccounts().stream()
-            .filter(a -> a.getBalance() >= threshold)
-            .sorted((a1, a2) -> Double.compare(a2.getBalance(), a1.getBalance()))
-            .collect(Collectors.toList());
+                .filter(a -> a.getBalance() >= threshold)
+                .sorted((a1, a2) -> Double.compare(a2.getBalance(), a1.getBalance()))
+                .collect(Collectors.toList());
 
         if (highValueAccounts.isEmpty()) {
             System.out.println(ANSI_YELLOW + "No accounts found with balance >= " + threshold + ANSI_RESET);
@@ -429,19 +430,19 @@ public class ConsoleUI {
 
         System.out.println(ANSI_CYAN + ANSI_BOLD + "\n===== HIGH-VALUE ACCOUNTS REPORT =====" + ANSI_RESET);
         System.out.println(ANSI_BOLD + "Accounts with balance >= " + threshold + ": " + highValueAccounts.size()
-            + ANSI_RESET);
+                + ANSI_RESET);
 
         System.out.println(ANSI_CYAN
-            + String.format("%-6s %-20s %-15s %-15s %-15s", "ACC#", "NAME", "TYPE", "BALANCE", "CREATED")
-            + ANSI_RESET);
+                + String.format("%-6s %-20s %-15s %-15s %-15s", "ACC#", "NAME", "TYPE", "BALANCE", "CREATED")
+                + ANSI_RESET);
 
         for (Account account : highValueAccounts) {
             System.out.println(String.format("%-6d %-20s %-15s %-15.2f %-15s",
-                account.getAccountNumber(),
-                account.getUserName(),
-                account.getAccountType(),
-                account.getBalance(),
-                account.getCreationDate()));
+                    account.getAccountNumber(),
+                    account.getUserName(),
+                    account.getAccountType(),
+                    account.getBalance(),
+                    account.getCreationDate()));
         }
     }
 
@@ -464,8 +465,9 @@ public class ConsoleUI {
         System.out.println(ANSI_CYAN + ANSI_BOLD + "\n===== TRANSACTION VOLUME REPORT =====" + ANSI_RESET);
 
         transactionTypeCount.entrySet().stream()
-            .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-            .forEach(entry -> System.out.println(ANSI_BOLD + entry.getKey() + ": " + ANSI_RESET + entry.getValue()));
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .forEach(
+                        entry -> System.out.println(ANSI_BOLD + entry.getKey() + ": " + ANSI_RESET + entry.getValue()));
     }
 
     private void accountManagementMenu() {
@@ -554,11 +556,11 @@ public class ConsoleUI {
         if (account instanceof SavingsAccount) {
             SavingsAccount savingsAccount = (SavingsAccount) account;
             System.out.println(ANSI_BOLD + "Minimum Balance: " + ANSI_RESET
-                + String.format("%.2f", savingsAccount.getMinimumBalance()));
+                    + String.format("%.2f", savingsAccount.getMinimumBalance()));
         } else if (account instanceof CurrentAccount) {
             CurrentAccount currentAccount = (CurrentAccount) account;
             System.out.println(ANSI_BOLD + "Overdraft Limit: " + ANSI_RESET
-                + String.format("%.2f", currentAccount.getOverdraftLimit()));
+                    + String.format("%.2f", currentAccount.getOverdraftLimit()));
         } else if (account instanceof FixedDepositAccount) {
             FixedDepositAccount fdAccount = (FixedDepositAccount) account;
             System.out.println(ANSI_BOLD + "Maturity Date: " + ANSI_RESET + fdAccount.getFormattedMaturityDate());

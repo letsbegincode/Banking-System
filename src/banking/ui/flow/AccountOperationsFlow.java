@@ -22,7 +22,7 @@ public class AccountOperationsFlow {
     private final TransactionPresenter transactionPresenter;
 
     public AccountOperationsFlow(Bank bank, ConsoleIO io, AccountPresenter accountPresenter,
-                                 TransactionPresenter transactionPresenter) {
+            TransactionPresenter transactionPresenter) {
         this.bank = bank;
         this.io = io;
         this.accountPresenter = accountPresenter;
@@ -53,9 +53,9 @@ public class AccountOperationsFlow {
             int choice = io.promptInt("Select operation: ");
             switch (choice) {
                 case 1 -> performOperation(account,
-                    new DepositOperation(account, io.promptDouble("Enter deposit amount: ")));
+                        new DepositOperation(account, io.promptDouble("Enter deposit amount: ")));
                 case 2 -> performOperation(account,
-                    new WithdrawOperation(account, io.promptDouble("Enter withdrawal amount: ")));
+                        new WithdrawOperation(account, io.promptDouble("Enter withdrawal amount: ")));
                 case 3 -> performTransfer(account);
                 case 4 -> transactionPresenter.showTransactions(account.getTransactions());
                 case 5 -> generateStatement(account);
