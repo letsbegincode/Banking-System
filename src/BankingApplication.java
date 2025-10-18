@@ -3,6 +3,7 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -491,31 +492,40 @@ class TransferOperation implements AccountOperation {
 class Bank implements Serializable {
     private static final long serialVersionUID = 1L;
     private static final SecureRandom secureRandom = new SecureRandom();
-    
+
     private final Map<Integer, Account> accounts;
-    private final List<AccountObserver> observers;
-    private final Queue<AccountOperation> operationQueue;
-    private final ExecutorService executorService;
-    
+    private transient List<AccountObserver> observers;
+    private transient Queue<AccountOperation> operationQueue;
+    private transient ExecutorService executorService;
+
     public Bank() {
         this.accounts = new HashMap<>();
-        this.observers = new ArrayList<>();
-        this.operationQueue = new LinkedList<>();
-        this.executorService = Executors.newFixedThreadPool(5);
-        
-        // Add default observers
-        addObserver(new ConsoleNotifier());
-        addObserver(new TransactionLogger());
+        initializeTransientState();
     }
-    
+
     public void addObserver(AccountObserver observer) {
-        observers.add(observer);
+        observers.add(Objects.requireNonNull(observer, "observer"));
     }
-    
+
     private void notifyObservers(String message) {
         for (AccountObserver observer : observers) {
             observer.update(message);
         }
+    }
+
+    private void initializeTransientState() {
+        this.observers = new ArrayList<>();
+        this.operationQueue = new ConcurrentLinkedQueue<>();
+        this.executorService = Executors.newFixedThreadPool(5);
+
+        // Add default observers after fresh initialization
+        addObserver(new ConsoleNotifier());
+        addObserver(new TransactionLogger());
+    }
+
+    private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+        ois.defaultReadObject();
+        initializeTransientState();
     }
     
     public Account createAccount(String userName, String accountType, double initialDeposit) {
@@ -581,7 +591,9 @@ class Bank implements Serializable {
     }
     
     public void shutdown() {
-        executorService.shutdown();
+        if (executorService != null) {
+            executorService.shutdown();
+        }
     }
     
     public void addInterestToAllSavingsAccounts() {
