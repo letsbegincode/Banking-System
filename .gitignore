@@ -1,0 +1,8 @@
+# Build outputs
+*.class
+*.ser
+
+# IDE artifacts
+.idea/
+*.iml
+.vscode/
