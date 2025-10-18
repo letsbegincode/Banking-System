@@ -4,8 +4,8 @@ This document describes how the Java modules collaborate within the Banking Syst
 
 ## Module Interaction Summary
 The runtime orchestrates user commands from the console through a set of cohesive modules:
-- **ConsoleUI** collects input and maps it to `AccountOperation` commands.
-- **Bank** owns the account registry, transaction executor, and persistence hooks.
+- **ConsoleUI** collects input and maps it to `AccountOperation` commands before delegating to the bank.
+- **Bank** owns the account registry and manages the asynchronous operation queue/executor as well as interest routines.
 - **AccountFactory** creates concrete account types while encapsulating initialization rules.
 - **Account** subclasses (`SavingsAccount`, `CurrentAccount`, `FixedDepositAccount`) enforce balance policies and interest behavior.
 - **BankDAO** persists and restores the `Bank` aggregate via Java serialization.
@@ -16,16 +16,20 @@ sequenceDiagram
     participant User
     participant ConsoleUI
     participant Bank
+    participant Queue as OperationQueue
+    participant Executor as ExecutorService
     participant Account
     participant BankDAO
     participant Observer as Observers
 
     User->>ConsoleUI: Request operation (e.g., deposit)
-    ConsoleUI->>Bank: build AccountOperation and submit
-    Bank->>Account: execute operation and mutate balance
+    ConsoleUI->>Bank: queueOperation(operation)
+    Bank->>Queue: enqueue(operation)
+    Bank->>Executor: submit(poll())
+    Executor->>Account: operation.execute()
     Account-->>Observers: notify(transaction)
-    Bank->>BankDAO: persist state asynchronously
-    BankDAO-->>Bank: confirmation/exception
+    ConsoleUI->>BankDAO: saveBank(bank) on exit
+    BankDAO-->>ConsoleUI: confirmation/exception
 ```
 
 ## Class Design
@@ -36,16 +40,24 @@ classDiagram
         -Scanner scanner
         -Bank bank
         +start()
-        +displayMenu()
+        +displayWelcomeBanner()
+        +displayMainMenu()
+        +createAccountMenu()
+        +accountOperationsMenu()
+        +generateReportsMenu()
     }
     class Bank {
         -Map~Integer, Account~ accounts
-        -ExecutorService executor
-        -BankDAO bankDAO
-        +registerAccount(...)
-        +processOperation(AccountOperation)
-        +applyInterest()
-        +persist()
+        -Queue~AccountOperation~ operationQueue
+        -ExecutorService executorService
+        +addObserver(AccountObserver)
+        +createAccount(userName, type, initialDeposit)
+        +closeAccount(int)
+        +getAccount(int)
+        +queueOperation(AccountOperation)
+        +executePendingOperations()
+        +addInterestToAllSavingsAccounts()
+        +shutdown()
     }
     class Account {
         <<abstract>>
@@ -54,7 +66,10 @@ classDiagram
         -double balance
         +deposit(double)
         +withdraw(double)
-        +recordTransaction(BaseTransaction)
+        +transfer(double, Account)
+        +addInterest()
+        +getAccountType()
+        +getTransactions()
     }
     class SavingsAccount
     class CurrentAccount
@@ -63,8 +78,8 @@ classDiagram
         +createAccount(type, userName)
     }
     class BankDAO {
-        +load()
-        +save(Bank)
+        +loadBank()
+        +saveBank(Bank)
     }
     class AccountOperation {
         <<interface>>
@@ -81,12 +96,13 @@ classDiagram
     class TransactionLogger
 
     ConsoleUI --> Bank
+    ConsoleUI --> BankDAO
     Bank --> AccountFactory
     AccountFactory --> Account
     Account <|-- SavingsAccount
     Account <|-- CurrentAccount
     Account <|-- FixedDepositAccount
-    Bank --> BankDAO
+    BankDAO --> Bank
     Account --> BaseTransaction
     Account --> ConsoleNotifier
     Account --> TransactionLogger
@@ -101,11 +117,11 @@ classDiagram
 ```
 
 ## Execution Flow Details
-1. `ConsoleUI` spins up and loads existing state via `BankDAO.load()`. If the serialized file is absent, a new `Bank` is constructed.
-2. When the operator selects an action, `ConsoleUI` builds the appropriate `AccountOperation` (e.g., `DepositOperation`) and hands it to `Bank.processOperation`.
-3. `Bank` submits the work to its `ExecutorService`. Operations mutate account state in a thread-safe manner and append concrete `BaseTransaction` entries.
+1. `BankingApplication` boots by calling `BankDAO.loadBank()`. If the serialized file is absent, a new `Bank` is constructed and passed into `ConsoleUI`.
+2. When the operator selects an action, `ConsoleUI` builds the appropriate `AccountOperation` (e.g., `DepositOperation`) and invokes `Bank.queueOperation`.
+3. `Bank` drains the internal queue through `executePendingOperations()`, delegating each operation to the `ExecutorService`. Operations mutate account state in a thread-safe manner and append concrete `BaseTransaction` entries.
 4. Accounts broadcast the resulting transaction through the observer list. `ConsoleNotifier` prints feedback; `TransactionLogger` writes audit lines.
-5. After each successful operation or on shutdown, `Bank.persist()` triggers `BankDAO.save(bank)`, updating `banking_system.ser`.
+5. On exit, `ConsoleUI` calls `BankDAO.saveBank(bank)`, updating `banking_system.ser` with the latest serialized snapshot.
 
 ## Extension Points
 - **New account type:** Implement a subclass of `Account` and update `AccountFactory` to instantiate it.
