@@ -80,7 +80,7 @@
 │  │  │                    • getAccountType(): String (abstract)              │   │   │
 │  │  │                    • getTransactions(): List<BaseTransaction>         │   │   │
 │  │  │                    • getTransactionsByType(String): List<...>         │   │   │
-│  │  │                    • getTransactionsByDateRange(String, String): List │   │   │
+│  │  │                    • getTransactionsByDateRange(LocalDateTime, LocalDateTime): List │   │   │
 │  │  └─────────────────────────────────────────────────────────────────────┘   │   │
 │  └─────────────────────────────────────────────────────────────────────────────┘   │
 │                                                                                     │
@@ -276,13 +276,14 @@
 │  │  Methods:                                                                   │   │
 │  │  • createAccount(String, String, double): Account                           │   │
 │  │  • closeAccount(int): boolean                                               │   │
+│  │  • updateAccountHolderName(int, String): boolean                            │   │
 │  │  • getAccount(int): Account                                                 │   │
 │  │  • getAllAccounts(): List<Account>                                          │   │
 │  │  • getAccountsByType(String): List<Account>                                 │   │
 │  │  • searchAccounts(String): List<Account>                                    │   │
-│  │  • queueOperation(AccountOperation): void                                   │   │
+│  │  • queueOperation(AccountOperation): CompletableFuture<OperationResult>     │   │
 │  │  • executePendingOperations(): void                                         │   │
-│  │  • addInterestToAllSavingsAccounts(): void                                  │   │
+│  │  • addInterestToAllSavingsAccounts(): int                                   │   │
 │  │  • addObserver(AccountObserver): void                                       │   │
 │  │  • notifyObservers(String): void                                            │   │
 │  └─────────────────────────────────────────────────────────────────────────────┘   │
@@ -426,6 +427,11 @@
 ### **User Interface**
 - **ConsoleUI**: Complete user interface with menus
 - **BankingApplication**: Application entry point
+
+### **Reporting Utilities**
+- **StatementGenerator**: Builds period-specific account statements with balance summaries.
+- **AccountStatement**: Immutable value object encapsulating statement metadata and transactions.
+- **StatementPresenter**: Formats statement summaries and transaction listings for the console UI.
 
 ### **Design Patterns**
 - **AccountFactory**: Object creation
