@@ -14,12 +14,33 @@ public class TransferOperation implements AccountOperation {
     }
 
     @Override
+<<<<<<< HEAD
     public boolean execute() {
         try {
             return sourceAccount.transfer(amount, targetAccount);
         } catch (Exception e) {
             System.out.println("Transfer failed: " + e.getMessage());
             return false;
+=======
+    public OperationResult execute() {
+        Account firstLock = sourceAccount.getAccountNumber() < targetAccount.getAccountNumber()
+            ? sourceAccount : targetAccount;
+        Account secondLock = firstLock == sourceAccount ? targetAccount : sourceAccount;
+
+        synchronized (firstLock) {
+            synchronized (secondLock) {
+                try {
+                    boolean transferred = sourceAccount.transfer(amount, targetAccount);
+                    if (transferred) {
+                        return OperationResult.success("Transfer of " + amount + " completed from account "
+                            + sourceAccount.getAccountNumber() + " to account " + targetAccount.getAccountNumber());
+                    }
+                    return OperationResult.failure("Transfer failed due to insufficient balance or account rules.");
+                } catch (IllegalArgumentException e) {
+                    return OperationResult.failure("Transfer failed: " + e.getMessage());
+                }
+            }
+>>>>>>> origin/pr/10
         }
     }
 

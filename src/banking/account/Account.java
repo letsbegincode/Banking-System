@@ -12,6 +12,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+<<<<<<< HEAD
+=======
+import java.util.Objects;
+>>>>>>> origin/pr/10
 import java.util.stream.Collectors;
 
 public abstract class Account implements Serializable {
@@ -24,11 +28,18 @@ public abstract class Account implements Serializable {
     private final String creationDate;
 
     protected Account(String userName, int accountNumber) {
+<<<<<<< HEAD
         this.userName = userName;
+=======
+>>>>>>> origin/pr/10
         this.accountNumber = accountNumber;
         this.balance = 0;
         this.transactions = new ArrayList<>();
         this.creationDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+<<<<<<< HEAD
+=======
+        setUserName(userName);
+>>>>>>> origin/pr/10
     }
 
     public synchronized void deposit(double amount) {
@@ -78,17 +89,29 @@ public abstract class Account implements Serializable {
         recordTransaction(new TransferReceiveTransaction(amount, sourceAccountNumber));
     }
 
+<<<<<<< HEAD
     public List<BaseTransaction> getTransactions() {
         return Collections.unmodifiableList(new ArrayList<>(transactions));
     }
 
     public List<BaseTransaction> getTransactionsByType(String type) {
+=======
+    public synchronized List<BaseTransaction> getTransactions() {
+        return Collections.unmodifiableList(new ArrayList<>(transactions));
+    }
+
+    public synchronized List<BaseTransaction> getTransactionsByType(String type) {
+>>>>>>> origin/pr/10
         return transactions.stream()
             .filter(t -> t.getType().contains(type))
             .collect(Collectors.toList());
     }
 
+<<<<<<< HEAD
     public List<BaseTransaction> getTransactionsByDateRange(String startDate, String endDate) {
+=======
+    public synchronized List<BaseTransaction> getTransactionsByDateRange(String startDate, String endDate) {
+>>>>>>> origin/pr/10
         return transactions.stream()
             .filter(t -> t.getDateTime().compareTo(startDate) >= 0 && t.getDateTime().compareTo(endDate) <= 0)
             .collect(Collectors.toList());
@@ -98,6 +121,7 @@ public abstract class Account implements Serializable {
         return accountNumber;
     }
 
+<<<<<<< HEAD
     public String getUserName() {
         return userName;
     }
@@ -111,6 +135,25 @@ public abstract class Account implements Serializable {
     }
 
     protected void setBalance(double balance) {
+=======
+    public synchronized String getUserName() {
+        return userName;
+    }
+
+    public synchronized void setUserName(String userName) {
+        String trimmedName = Objects.requireNonNull(userName, "userName").trim();
+        if (trimmedName.isEmpty()) {
+            throw new IllegalArgumentException("Account holder name cannot be blank.");
+        }
+        this.userName = trimmedName;
+    }
+
+    public synchronized double getBalance() {
+        return balance;
+    }
+
+    protected synchronized void setBalance(double balance) {
+>>>>>>> origin/pr/10
         this.balance = balance;
     }
 
@@ -118,7 +161,11 @@ public abstract class Account implements Serializable {
         return creationDate;
     }
 
+<<<<<<< HEAD
     protected void recordTransaction(BaseTransaction transaction) {
+=======
+    protected synchronized void recordTransaction(BaseTransaction transaction) {
+>>>>>>> origin/pr/10
         transactions.add(transaction);
     }
 }
