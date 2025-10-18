@@ -31,18 +31,11 @@ graph TD
 ## Operations Runbooks
 ### Provision & Boot
 1. Install JDK 8+ and clone the repository.
-<<<<<<< HEAD
 2. Compile from the project root: `javac src/BankingApplication.java`.
 3. Start the console application: `java -cp src BankingApplication`.
 4. Confirm the startup banner and ensure `banking_system.ser` loads existing state.
 5. When you are done for the day, exit through menu option **7** so `BankDAO.saveBank` writes the latest snapshot.
-=======
-2. Compile from the project root: `javac $(find src -name "*.java")`.
-3. Run the lightweight regression suite: `java -cp src banking.test.BankTestRunner`.
-4. Start the console application: `java -cp src banking.BankingApplication`.
-5. Confirm the startup banner and ensure `banking_system.ser` loads existing state.
-6. When you are done for the day, exit through menu option **7** so `BankDAO.saveBank` writes the latest snapshot.
->>>>>>> origin/pr/10
+
 
 ### Data Backup & Restore
 - **Backup:** Copy the `banking_system.ser` artifact to secure storage after closing the app.

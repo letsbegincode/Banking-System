@@ -1,8 +1,16 @@
 package banking.test;
 
 import banking.account.Account;
+<<<<<<< HEAD
 import banking.service.Bank;
 
+=======
+import banking.report.AccountStatement;
+import banking.report.StatementGenerator;
+import banking.service.Bank;
+
+import java.time.LocalDate;
+>>>>>>> origin/pr/11
 import java.util.concurrent.CompletableFuture;
 
 public final class BankTestRunner {
@@ -23,6 +31,10 @@ public final class BankTestRunner {
         execute("withdraw reduces balance when allowed", this::shouldWithdrawFunds);
         execute("transfer moves funds between accounts", this::shouldTransferFunds);
         execute("interest applied to savings accounts", this::shouldApplyInterest);
+<<<<<<< HEAD
+=======
+        execute("statement summarizes period balances", this::shouldGenerateStatement);
+>>>>>>> origin/pr/11
     }
 
     private void execute(String name, TestCase testCase) {
@@ -112,6 +124,31 @@ public final class BankTestRunner {
         }
     }
 
+<<<<<<< HEAD
+=======
+    private void shouldGenerateStatement() {
+        Bank bank = new Bank();
+        try {
+            Account account = bank.createAccount("Frank", "current", 0);
+            bank.deposit(account.getAccountNumber(), 500.0).join();
+            bank.withdraw(account.getAccountNumber(), 200.0).join();
+
+            StatementGenerator generator = new StatementGenerator();
+            LocalDate start = LocalDate.now().minusDays(1);
+            LocalDate end = LocalDate.now().plusDays(1);
+            AccountStatement statement = generator.generate(account, start, end);
+
+            assertEquals(0.0, statement.getOpeningBalance(), 0.0001, "Opening balance should start at zero");
+            assertEquals(300.0, statement.getClosingBalance(), 0.0001, "Closing balance should reflect net activity");
+            assertEquals(500.0, statement.getTotalCredits(), 0.0001, "Credits should capture deposits");
+            assertEquals(200.0, statement.getTotalDebits(), 0.0001, "Debits should capture withdrawals");
+            assertEquals(2, statement.getTransactions().size(), "Statement should include period transactions");
+        } finally {
+            bank.shutdown();
+        }
+    }
+
+>>>>>>> origin/pr/11
     private static void assertEquals(double expected, double actual, double delta, String message) {
         if (Math.abs(expected - actual) > delta) {
             throw new AssertionError(message + " (expected: " + expected + ", actual: " + actual + ")");
@@ -130,6 +167,15 @@ public final class BankTestRunner {
         }
     }
 
+<<<<<<< HEAD
+=======
+    private static void assertEquals(int expected, int actual, String message) {
+        if (expected != actual) {
+            throw new AssertionError(message + " (expected: " + expected + ", actual: " + actual + ")");
+        }
+    }
+
+>>>>>>> origin/pr/11
     @FunctionalInterface
     private interface TestCase {
         void run();

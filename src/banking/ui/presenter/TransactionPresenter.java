@@ -3,7 +3,11 @@ package banking.ui.presenter;
 import banking.transaction.BaseTransaction;
 import banking.ui.console.ConsoleIO;
 
+<<<<<<< HEAD
 import java.time.LocalDateTime;
+=======
+import java.time.LocalDate;
+>>>>>>> origin/pr/11
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.function.Predicate;
@@ -43,6 +47,7 @@ public class TransactionPresenter {
     }
 
     public void showStatement(List<BaseTransaction> transactions, String startDateInclusive, String endDateInclusive) {
+<<<<<<< HEAD
         showStatement(transactions,
             startDateInclusive + " to " + endDateInclusive,
             transaction -> transaction.getDateTime().compareTo(startDateInclusive) >= 0
@@ -56,6 +61,26 @@ public class TransactionPresenter {
         String startDate = start.format(formatter);
         String endDate = now.format(formatter);
         showStatement(transactions, startDate, endDate);
+=======
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDate start = LocalDate.parse(startDateInclusive, formatter);
+        LocalDate end = LocalDate.parse(endDateInclusive, formatter);
+
+        showStatement(transactions,
+            startDateInclusive + " to " + endDateInclusive,
+            transaction -> {
+                LocalDate transactionDate = transaction.getTimestamp().toLocalDate();
+                return (transactionDate.isEqual(start) || transactionDate.isAfter(start))
+                    && (transactionDate.isEqual(end) || transactionDate.isBefore(end));
+            });
+    }
+
+    public void showStatement(List<BaseTransaction> transactions, int monthsBack) {
+        LocalDate end = LocalDate.now();
+        LocalDate start = end.minusMonths(monthsBack);
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        showStatement(transactions, start.format(formatter), end.format(formatter));
+>>>>>>> origin/pr/11
     }
 
     private String formatTransaction(BaseTransaction transaction) {

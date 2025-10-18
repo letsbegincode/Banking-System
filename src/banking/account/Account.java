@@ -13,9 +13,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 import java.util.Objects;
 >>>>>>> origin/pr/10
+=======
+import java.util.Objects;
+>>>>>>> origin/pr/11
 import java.util.stream.Collectors;
 
 public abstract class Account implements Serializable {
@@ -29,17 +33,24 @@ public abstract class Account implements Serializable {
 
     protected Account(String userName, int accountNumber) {
 <<<<<<< HEAD
+<<<<<<< HEAD
         this.userName = userName;
 =======
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
         this.accountNumber = accountNumber;
         this.balance = 0;
         this.transactions = new ArrayList<>();
         this.creationDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
         setUserName(userName);
 >>>>>>> origin/pr/10
+=======
+        setUserName(userName);
+>>>>>>> origin/pr/11
     }
 
     public synchronized void deposit(double amount) {
@@ -90,23 +101,30 @@ public abstract class Account implements Serializable {
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     public List<BaseTransaction> getTransactions() {
         return Collections.unmodifiableList(new ArrayList<>(transactions));
     }
 
     public List<BaseTransaction> getTransactionsByType(String type) {
 =======
+=======
+>>>>>>> origin/pr/11
     public synchronized List<BaseTransaction> getTransactions() {
         return Collections.unmodifiableList(new ArrayList<>(transactions));
     }
 
     public synchronized List<BaseTransaction> getTransactionsByType(String type) {
+<<<<<<< HEAD
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
         return transactions.stream()
             .filter(t -> t.getType().contains(type))
             .collect(Collectors.toList());
     }
 
+<<<<<<< HEAD
 <<<<<<< HEAD
     public List<BaseTransaction> getTransactionsByDateRange(String startDate, String endDate) {
 =======
@@ -114,6 +132,18 @@ public abstract class Account implements Serializable {
 >>>>>>> origin/pr/10
         return transactions.stream()
             .filter(t -> t.getDateTime().compareTo(startDate) >= 0 && t.getDateTime().compareTo(endDate) <= 0)
+=======
+    public synchronized List<BaseTransaction> getTransactionsByDateRange(LocalDateTime startInclusive,
+                                                                         LocalDateTime endInclusive) {
+        LocalDateTime start = Objects.requireNonNull(startInclusive, "startInclusive");
+        LocalDateTime end = Objects.requireNonNull(endInclusive, "endInclusive");
+        if (end.isBefore(start)) {
+            throw new IllegalArgumentException("End date must not be before start date.");
+        }
+
+        return transactions.stream()
+            .filter(t -> !t.getTimestamp().isBefore(start) && !t.getTimestamp().isAfter(end))
+>>>>>>> origin/pr/11
             .collect(Collectors.toList());
     }
 
@@ -121,6 +151,7 @@ public abstract class Account implements Serializable {
         return accountNumber;
     }
 
+<<<<<<< HEAD
 <<<<<<< HEAD
     public String getUserName() {
         return userName;
@@ -136,6 +167,8 @@ public abstract class Account implements Serializable {
 
     protected void setBalance(double balance) {
 =======
+=======
+>>>>>>> origin/pr/11
     public synchronized String getUserName() {
         return userName;
     }
@@ -153,7 +186,10 @@ public abstract class Account implements Serializable {
     }
 
     protected synchronized void setBalance(double balance) {
+<<<<<<< HEAD
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
         this.balance = balance;
     }
 
@@ -162,10 +198,14 @@ public abstract class Account implements Serializable {
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     protected void recordTransaction(BaseTransaction transaction) {
 =======
     protected synchronized void recordTransaction(BaseTransaction transaction) {
 >>>>>>> origin/pr/10
+=======
+    protected synchronized void recordTransaction(BaseTransaction transaction) {
+>>>>>>> origin/pr/11
         transactions.add(transaction);
     }
 }

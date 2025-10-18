@@ -10,17 +10,10 @@ Thank you for investing time in the Banking System project! This document outlin
    - Use idiomatic Java 8+.
    - Keep classes focused; prefer composition over inheritance when adding new behavior.
    - Avoid catching generic `Exception` unless rethrowing with context.
-<<<<<<< HEAD
-5. **Add Tests When Possible:** This project currently relies on manual testing. When adding automated tests, store them under `src/test/java` and document how to run them.
-
-## Development Workflow
-1. Run the console locally with `java -cp src BankingApplication` to verify manual scenarios.
-=======
 5. **Add Tests When Possible:** A lightweight regression harness lives under `src/banking/test`. Extend it or add complementary suites when you introduce new behavior, and document how to execute them.
 
 ## Development Workflow
 1. Compile the project with `javac $(find src -name "*.java")`, execute automated checks via `java -cp src banking.test.BankTestRunner`, and then run the console with `java -cp src banking.BankingApplication` to verify interactive scenarios.
->>>>>>> origin/pr/10
 2. Ensure new features integrate with existing persistence by exercising create/deposit/withdraw flows.
 3. Update documentation (`README`, `docs/`) when behavior or configuration changes.
 4. Commit with conventional-style messages (e.g., `feat: add overdraft protection`).

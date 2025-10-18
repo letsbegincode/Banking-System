@@ -15,6 +15,7 @@ public class TransferOperation implements AccountOperation {
 
     @Override
 <<<<<<< HEAD
+<<<<<<< HEAD
     public boolean execute() {
         try {
             return sourceAccount.transfer(amount, targetAccount);
@@ -22,6 +23,8 @@ public class TransferOperation implements AccountOperation {
             System.out.println("Transfer failed: " + e.getMessage());
             return false;
 =======
+=======
+>>>>>>> origin/pr/11
     public OperationResult execute() {
         Account firstLock = sourceAccount.getAccountNumber() < targetAccount.getAccountNumber()
             ? sourceAccount : targetAccount;
@@ -40,7 +43,10 @@ public class TransferOperation implements AccountOperation {
                     return OperationResult.failure("Transfer failed: " + e.getMessage());
                 }
             }
+<<<<<<< HEAD
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
         }
     }
 

@@ -24,10 +24,7 @@ package "Domain" {
 }
 package "Infrastructure" {
   [BankDAO]
-<<<<<<< HEAD
-=======
   [Operation Queue]
->>>>>>> origin/pr/10
   [ExecutorService]
   [Serialized Store]
 }
@@ -35,28 +32,18 @@ package "Infrastructure" {
 [Bank] --> [AccountFactory]
 [Bank] --> [Account Hierarchy]
 [Bank] --> [AccountOperation Commands]
-<<<<<<< HEAD
-[Account Hierarchy] --> [Observers]
-[Bank] --> [BankDAO]
-[Bank] --> [ExecutorService]
-=======
 [Bank] --> [Operation Queue]
 [Account Hierarchy] --> [Observers]
 [Bank] --> [ExecutorService]
 [Operation Queue] --> [ExecutorService]
 [Bank] --> [BankDAO]
->>>>>>> origin/pr/10
 [BankDAO] --> [Serialized Store]
 @enduml
 ```
 
 ## Data Flow
 1. Operators initiate actions from the CLI. Inputs are validated and mapped to command objects.
-<<<<<<< HEAD
-2. Commands execute within the `Bank` service, which orchestrates transactional updates across the relevant `Account` instances.
-=======
 2. Commands are enqueued via `Bank.queueOperation` and drained through the `ExecutorService`, keeping the console responsive while operations run asynchronously against the target `Account` instances.
->>>>>>> origin/pr/10
 3. Each mutation appends a `BaseTransaction` record, enabling audit trails and replay.
 4. Persistence writes the mutated bank aggregate to `banking_system.ser`. Startup reads the file back into memory.
 5. Observers emit feedback to the console and structured logs for operators.
@@ -64,13 +51,9 @@ package "Infrastructure" {
 ```mermaid
 flowchart LR
     UI[ConsoleUI] --> CMD[AccountOperation Commands]
-<<<<<<< HEAD
-    CMD --> BANK[Bank Service]
-=======
     CMD --> QUEUE[Operation Queue]
     QUEUE --> EXEC[ExecutorService]
     EXEC --> BANK[Bank Service]
->>>>>>> origin/pr/10
     BANK --> ACC[Account Instances]
     ACC --> TXN[Transaction Ledger]
     BANK --> DAO[BankDAO]

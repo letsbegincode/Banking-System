@@ -9,12 +9,18 @@ import banking.observer.ConsoleNotifier;
 import banking.observer.TransactionLogger;
 import banking.operation.AccountOperation;
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> origin/pr/11
 import banking.operation.DepositOperation;
 import banking.operation.OperationResult;
 import banking.operation.TransferOperation;
 import banking.operation.WithdrawOperation;
+<<<<<<< HEAD
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -27,10 +33,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 <<<<<<< HEAD
+<<<<<<< HEAD
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 =======
+=======
+>>>>>>> origin/pr/11
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -38,7 +47,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+<<<<<<< HEAD
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
 import java.util.stream.Collectors;
 
 public class Bank implements Serializable {
@@ -48,6 +60,7 @@ public class Bank implements Serializable {
     private final Map<Integer, Account> accounts;
     private transient List<AccountObserver> observers;
 <<<<<<< HEAD
+<<<<<<< HEAD
     private transient Queue<AccountOperation> operationQueue;
     private transient ExecutorService executorService;
 =======
@@ -55,6 +68,11 @@ public class Bank implements Serializable {
     private transient ExecutorService executorService;
     private transient List<CompletableFuture<OperationResult>> pendingOperations;
 >>>>>>> origin/pr/10
+=======
+    private transient Queue<QueuedOperation> operationQueue;
+    private transient ExecutorService executorService;
+    private transient List<CompletableFuture<OperationResult>> pendingOperations;
+>>>>>>> origin/pr/11
 
     public Bank() {
         this.accounts = new HashMap<>();
@@ -85,7 +103,10 @@ public class Bank implements Serializable {
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> origin/pr/11
     public synchronized boolean updateAccountHolderName(int accountNumber, String newName) {
         Account account = accounts.get(accountNumber);
         if (account == null) {
@@ -97,7 +118,10 @@ public class Bank implements Serializable {
         return true;
     }
 
+<<<<<<< HEAD
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
     public synchronized Account getAccount(int accountNumber) {
         return accounts.get(accountNumber);
     }
@@ -120,10 +144,13 @@ public class Bank implements Serializable {
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     public synchronized void queueOperation(AccountOperation operation) {
         operationQueue.add(operation);
         executePendingOperations();
 =======
+=======
+>>>>>>> origin/pr/11
     public synchronized CompletableFuture<OperationResult> deposit(int accountNumber, double amount) {
         Account account = accounts.get(accountNumber);
         if (account == null) {
@@ -171,11 +198,15 @@ public class Bank implements Serializable {
         operationQueue.add(new QueuedOperation(operation, future));
         executePendingOperations();
         return future;
+<<<<<<< HEAD
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
     }
 
     public synchronized void executePendingOperations() {
         while (!operationQueue.isEmpty()) {
+<<<<<<< HEAD
 <<<<<<< HEAD
             AccountOperation operation = operationQueue.poll();
             executorService.submit(() -> {
@@ -201,6 +232,8 @@ public class Bank implements Serializable {
             .forEach(Account::addInterest);
         notifyObservers("Monthly interest added to all eligible accounts");
 =======
+=======
+>>>>>>> origin/pr/11
             QueuedOperation queued = operationQueue.poll();
             if (queued == null) {
                 continue;
@@ -270,34 +303,49 @@ public class Bank implements Serializable {
         } finally {
             pendingOperations.remove(queued.future());
         }
+<<<<<<< HEAD
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
     }
 
     private void notifyObservers(String message) {
         for (AccountObserver observer : observers) {
 <<<<<<< HEAD
+<<<<<<< HEAD
             observer.update(message);
 =======
+=======
+>>>>>>> origin/pr/11
             try {
                 observer.update(message);
             } catch (RuntimeException e) {
                 System.err.println("Observer notification failed: " + e.getMessage());
             }
+<<<<<<< HEAD
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
         }
     }
 
     private void initializeTransientState() {
 <<<<<<< HEAD
+<<<<<<< HEAD
         this.observers = new ArrayList<>();
         this.operationQueue = new ConcurrentLinkedQueue<>();
         this.executorService = Executors.newFixedThreadPool(5);
 =======
+=======
+>>>>>>> origin/pr/11
         this.observers = new CopyOnWriteArrayList<>();
         this.operationQueue = new ConcurrentLinkedQueue<>();
         this.executorService = Executors.newFixedThreadPool(5);
         this.pendingOperations = new CopyOnWriteArrayList<>();
+<<<<<<< HEAD
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
 
         addObserver(new ConsoleNotifier());
         addObserver(new TransactionLogger());
@@ -309,7 +357,10 @@ public class Bank implements Serializable {
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> origin/pr/11
     public void awaitPendingOperations() {
         while (true) {
             CompletableFuture<?>[] futures;
@@ -324,7 +375,10 @@ public class Bank implements Serializable {
         }
     }
 
+<<<<<<< HEAD
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
     private int generateAccountNumber() {
         int accountNumber;
         do {
@@ -333,9 +387,15 @@ public class Bank implements Serializable {
         return accountNumber;
     }
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 
     private record QueuedOperation(AccountOperation operation, CompletableFuture<OperationResult> future) {
     }
 >>>>>>> origin/pr/10
+=======
+
+    private record QueuedOperation(AccountOperation operation, CompletableFuture<OperationResult> future) {
+    }
+>>>>>>> origin/pr/11
 }

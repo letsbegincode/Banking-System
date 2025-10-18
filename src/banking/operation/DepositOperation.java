@@ -13,6 +13,7 @@ public class DepositOperation implements AccountOperation {
 
     @Override
 <<<<<<< HEAD
+<<<<<<< HEAD
     public boolean execute() {
         try {
             account.deposit(amount);
@@ -21,6 +22,8 @@ public class DepositOperation implements AccountOperation {
             System.out.println("Deposit failed: " + e.getMessage());
             return false;
 =======
+=======
+>>>>>>> origin/pr/11
     public OperationResult execute() {
         try {
             account.deposit(amount);
@@ -28,7 +31,10 @@ public class DepositOperation implements AccountOperation {
                 + account.getAccountNumber());
         } catch (IllegalArgumentException e) {
             return OperationResult.failure("Deposit failed: " + e.getMessage());
+<<<<<<< HEAD
 >>>>>>> origin/pr/10
+=======
+>>>>>>> origin/pr/11
         }
     }
 

@@ -44,9 +44,26 @@ public class AccountManagementFlow {
 
         io.info("Current account holder: " + account.getUserName());
         String newName = io.prompt("Enter new account holder name: ");
+<<<<<<< HEAD
         account.setUserName(newName);
         io.success("Account holder name updated successfully!");
         accountPresenter.showAccountDetails(account);
+=======
+        try {
+            boolean updated = bank.updateAccountHolderName(accountNumber, newName);
+            if (updated) {
+                io.success("Account holder name updated successfully!");
+                Account updatedAccount = bank.getAccount(accountNumber);
+                if (updatedAccount != null) {
+                    accountPresenter.showAccountDetails(updatedAccount);
+                }
+            } else {
+                io.error("Failed to update account holder name. Account may have been removed.");
+            }
+        } catch (IllegalArgumentException e) {
+            io.error(e.getMessage());
+        }
+>>>>>>> origin/pr/11
     }
 
     private void closeAccount() {
@@ -75,8 +92,17 @@ public class AccountManagementFlow {
     private void processMonthlyInterest() {
         String confirm = io.prompt("Process monthly interest for all eligible accounts? (yes/no): ");
         if (confirm.equalsIgnoreCase("yes")) {
+<<<<<<< HEAD
             bank.addInterestToAllSavingsAccounts();
             io.success("Monthly interest processed successfully!");
+=======
+            int processed = bank.addInterestToAllSavingsAccounts();
+            if (processed > 0) {
+                io.success("Monthly interest processed for " + processed + " accounts.");
+            } else {
+                io.warning("No accounts were eligible for monthly interest this cycle.");
+            }
+>>>>>>> origin/pr/11
         } else {
             io.warning("Interest processing canceled.");
         }

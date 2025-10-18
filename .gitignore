@@ -1,22 +1,13 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
+
 temp.md
-=======
-# Build outputs
-*.class
-*.ser
-=======
+
 # Build outputs
 *.class
 *.ser
 transaction_log.txt
->>>>>>> origin/pr/10
 
 # IDE artifacts
 .idea/
 *.iml
 .vscode/
-<<<<<<< HEAD
->>>>>>> origin/pr/6
-=======
->>>>>>> origin/pr/10
+
