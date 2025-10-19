@@ -2,7 +2,11 @@ package banking.api;
 
 import banking.account.Account;
 import banking.operation.OperationResult;
+import banking.report.AccountAnalyticsService;
+import banking.report.AnalyticsReport;
+import banking.report.AnalyticsReportRequest;
 import banking.service.Bank;
+import banking.ui.presenter.AnalyticsPresenter;
 
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
@@ -15,6 +19,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -23,6 +28,7 @@ import java.util.Objects;
 import java.util.StringJoiner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.CompletionException;
 
 /**
  * Lightweight HTTP facade that exposes a subset of the banking service as REST-style endpoints.
@@ -30,12 +36,16 @@ import java.util.concurrent.Executors;
 public class BankHttpServer {
     private final Bank bank;
     private final int requestedPort;
+    private final AccountAnalyticsService analyticsService;
+    private final AnalyticsPresenter analyticsPresenter;
     private HttpServer server;
     private ExecutorService executorService;
 
     public BankHttpServer(Bank bank, int port) {
         this.bank = Objects.requireNonNull(bank, "bank");
         this.requestedPort = port;
+        this.analyticsService = new AccountAnalyticsService();
+        this.analyticsPresenter = new AnalyticsPresenter();
     }
 
     public synchronized void start() {
@@ -53,6 +63,8 @@ public class BankHttpServer {
         server.createContext("/operations/deposit", new DepositHandler());
         server.createContext("/operations/withdraw", new WithdrawHandler());
         server.createContext("/operations/transfer", new TransferHandler());
+        server.createContext("/reports/analytics.json", new AnalyticsJsonHandler());
+        server.createContext("/reports/analytics.csv", new AnalyticsCsvHandler());
         server.setExecutor(executorService);
         server.start();
     }
@@ -237,6 +249,90 @@ public class BankHttpServer {
             double amount = parseAmount(params.get("amount"));
             OperationResult result = bank.transfer(source, target, amount).join();
             respond(exchange, statusFor(result), resultJson(result));
+        }
+    }
+
+    private abstract class AnalyticsHandler extends JsonHandler {
+        protected AnalyticsReportRequest parseRequest(HttpExchange exchange) throws IOException {
+            Map<String, String> params = parseParams(exchange);
+            LocalDate start = parseDate(params.get("start"), LocalDate.now().minusDays(30));
+            LocalDate end = parseDate(params.get("end"), LocalDate.now());
+            double threshold = parseDouble(params.get("threshold"), 5000.0);
+            int window = parseInt(params.get("window"), 7);
+            return AnalyticsReportRequest.builder()
+                    .withStartDate(start)
+                    .withEndDate(end)
+                    .withLargeTransactionThreshold(threshold)
+                    .withRollingWindowDays(window)
+                    .build();
+        }
+
+        protected AnalyticsReport computeReport(AnalyticsReportRequest request) {
+            try {
+                return bank.generateAnalyticsReport(request, analyticsService).join();
+            } catch (CompletionException ex) {
+                Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+                throw new IllegalStateException("Analytics computation failed: " + cause.getMessage(), cause);
+            }
+        }
+
+        private LocalDate parseDate(String value, LocalDate defaultValue) {
+            if (value == null || value.isBlank()) {
+                return defaultValue;
+            }
+            return LocalDate.parse(value.trim());
+        }
+
+        private double parseDouble(String value, double defaultValue) {
+            if (value == null || value.isBlank()) {
+                return defaultValue;
+            }
+            try {
+                return Double.parseDouble(value.trim());
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid numeric value: " + value);
+            }
+        }
+
+        private int parseInt(String value, int defaultValue) {
+            if (value == null || value.isBlank()) {
+                return defaultValue;
+            }
+            try {
+                return Integer.parseInt(value.trim());
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid integer value: " + value);
+            }
+        }
+    }
+
+    private final class AnalyticsJsonHandler extends AnalyticsHandler {
+        @Override
+        protected void handleInternal(HttpExchange exchange) throws Exception {
+            ensureMethod(exchange, "GET");
+            AnalyticsReportRequest request = parseRequest(exchange);
+            AnalyticsReport report = computeReport(request);
+            respond(exchange, 200, analyticsPresenter.toJson(report));
+        }
+    }
+
+    private final class AnalyticsCsvHandler extends AnalyticsHandler {
+        @Override
+        protected void handleInternal(HttpExchange exchange) throws Exception {
+            ensureMethod(exchange, "GET");
+            AnalyticsReportRequest request = parseRequest(exchange);
+            AnalyticsReport report = computeReport(request);
+            respondCsv(exchange, 200, analyticsPresenter.toCsv(report));
+        }
+
+        private void respondCsv(HttpExchange exchange, int status, String body) throws IOException {
+            byte[] responseBytes = body.getBytes(StandardCharsets.UTF_8);
+            Headers headers = exchange.getResponseHeaders();
+            headers.set("Content-Type", "text/csv; charset=utf-8");
+            exchange.sendResponseHeaders(status, responseBytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(responseBytes);
+            }
         }
     }
 

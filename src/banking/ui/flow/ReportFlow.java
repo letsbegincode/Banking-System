@@ -1,12 +1,16 @@
 package banking.ui.flow;
 
 import banking.account.Account;
+import banking.report.AccountAnalyticsService;
 import banking.report.AccountStatement;
+import banking.report.AnalyticsReport;
+import banking.report.AnalyticsReportRequest;
 import banking.report.StatementGenerator;
 import banking.service.Bank;
 import banking.transaction.BaseTransaction;
 import banking.ui.console.ConsoleIO;
 import banking.ui.presenter.AccountPresenter;
+import banking.ui.presenter.AnalyticsPresenter;
 import banking.ui.presenter.StatementPresenter;
 
 import java.time.LocalDate;
@@ -23,17 +27,23 @@ public class ReportFlow {
     private final AccountPresenter accountPresenter;
     private final StatementGenerator statementGenerator;
     private final StatementPresenter statementPresenter;
+    private final AccountAnalyticsService analyticsService;
+    private final AnalyticsPresenter analyticsPresenter;
 
     public ReportFlow(Bank bank,
             ConsoleIO io,
             AccountPresenter accountPresenter,
             StatementGenerator statementGenerator,
-            StatementPresenter statementPresenter) {
+            StatementPresenter statementPresenter,
+            AccountAnalyticsService analyticsService,
+            AnalyticsPresenter analyticsPresenter) {
         this.bank = bank;
         this.io = io;
         this.accountPresenter = accountPresenter;
         this.statementGenerator = statementGenerator;
         this.statementPresenter = statementPresenter;
+        this.analyticsService = analyticsService;
+        this.analyticsPresenter = analyticsPresenter;
     }
 
     public void showReportsMenu() {
@@ -42,7 +52,10 @@ public class ReportFlow {
         io.info("2. High-Value Accounts Report");
         io.info("3. Transaction Volume Report");
         io.info("4. Generate Account Statement");
-        io.info("5. Back to Main Menu");
+        io.info("5. Portfolio Analytics Summary");
+        io.info("6. Export Portfolio Analytics (CSV)");
+        io.info("7. Export Portfolio Analytics (JSON)");
+        io.info("8. Back to Main Menu");
 
         int choice = io.promptInt("Select a report to generate: ");
         switch (choice) {
@@ -50,7 +63,10 @@ public class ReportFlow {
             case 2 -> generateHighValueReport();
             case 3 -> generateTransactionVolumeReport();
             case 4 -> generateAccountStatement();
-            case 5 -> io.info("Returning to main menu...");
+            case 5 -> generatePortfolioAnalyticsSummary();
+            case 6 -> exportPortfolioAnalyticsCsv();
+            case 7 -> exportPortfolioAnalyticsJson();
+            case 8 -> io.info("Returning to main menu...");
             default -> io.error("Invalid choice!");
         }
     }
@@ -98,11 +114,106 @@ public class ReportFlow {
         statementPresenter.show(statement);
     }
 
+    private void generatePortfolioAnalyticsSummary() {
+        AnalyticsReport report = runAnalyticsWorkflow();
+        if (report != null) {
+            analyticsPresenter.showSummary(report);
+        }
+    }
+
+    private void exportPortfolioAnalyticsCsv() {
+        AnalyticsReport report = runAnalyticsWorkflow();
+        if (report != null) {
+            String csv = analyticsPresenter.toCsv(report);
+            io.subHeading("CSV Export");
+            io.println(csv);
+        }
+    }
+
+    private void exportPortfolioAnalyticsJson() {
+        AnalyticsReport report = runAnalyticsWorkflow();
+        if (report != null) {
+            String json = analyticsPresenter.toJson(report);
+            io.subHeading("JSON Export");
+            io.println(json);
+        }
+    }
+
+    private AnalyticsReport runAnalyticsWorkflow() {
+        try {
+            AnalyticsReportRequest request = promptAnalyticsRequest();
+            io.info("Queuing analytics report... this may take a few moments.");
+            return bank.generateAnalyticsReport(request, analyticsService).join();
+        } catch (Exception ex) {
+            io.error("Failed to generate analytics report: " + ex.getMessage());
+            return null;
+        }
+    }
+
+    private AnalyticsReportRequest promptAnalyticsRequest() {
+        LocalDate defaultStart = LocalDate.now().minusDays(30);
+        LocalDate defaultEnd = LocalDate.now();
+        io.info("Press ENTER to accept defaults.");
+        LocalDate startDate = promptOptionalDate("Enter analytics start date (yyyy-MM-dd)", defaultStart);
+        LocalDate endDate = promptOptionalDate("Enter analytics end date (yyyy-MM-dd)", defaultEnd);
+        String thresholdInput = io.prompt("Enter high-value threshold (default 5000): ");
+        double threshold;
+        if (thresholdInput == null || thresholdInput.isBlank()) {
+            threshold = 5000.0;
+        } else {
+            try {
+                threshold = Double.parseDouble(thresholdInput.trim());
+            } catch (NumberFormatException e) {
+                io.warning("Invalid threshold provided. Using default (5000).");
+                threshold = 5000.0;
+            }
+        }
+
+        String windowInput = io.prompt("Enter rolling window (days, default 7): ");
+        int window;
+        if (windowInput == null || windowInput.isBlank()) {
+            window = 7;
+        } else {
+            try {
+                window = Integer.parseInt(windowInput.trim());
+                if (window <= 0) {
+                    io.warning("Rolling window must be positive. Using default (7).");
+                    window = 7;
+                }
+            } catch (NumberFormatException e) {
+                io.warning("Invalid window provided. Using default (7).");
+                window = 7;
+            }
+        }
+
+        return AnalyticsReportRequest.builder()
+                .withStartDate(startDate)
+                .withEndDate(endDate)
+                .withLargeTransactionThreshold(threshold)
+                .withRollingWindowDays(window)
+                .build();
+    }
+
     private LocalDate promptForDate(String prompt) {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         while (true) {
             try {
                 return LocalDate.parse(io.prompt(prompt), formatter);
+            } catch (DateTimeParseException ex) {
+                io.error("Invalid date format. Please use yyyy-MM-dd.");
+            }
+        }
+    }
+
+    private LocalDate promptOptionalDate(String prompt, LocalDate defaultValue) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        while (true) {
+            String input = io.prompt(prompt + " [" + defaultValue + "]: ");
+            if (input == null || input.isBlank()) {
+                return defaultValue;
+            }
+            try {
+                return LocalDate.parse(input.trim(), formatter);
             } catch (DateTimeParseException ex) {
                 io.error("Invalid date format. Please use yyyy-MM-dd.");
             }

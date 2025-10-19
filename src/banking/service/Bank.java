@@ -12,6 +12,11 @@ import banking.operation.DepositOperation;
 import banking.operation.OperationResult;
 import banking.operation.TransferOperation;
 import banking.operation.WithdrawOperation;
+import banking.report.AccountAnalyticsService;
+import banking.report.AccountSnapshot;
+import banking.report.AnalyticsReport;
+import banking.report.AnalyticsReportOperation;
+import banking.report.AnalyticsReportRequest;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -100,6 +105,24 @@ public class Bank implements Serializable {
         return accounts.values().stream()
                 .filter(a -> a.getUserName().toLowerCase().contains(lowercaseKeyword))
                 .collect(Collectors.toList());
+    }
+
+    public CompletableFuture<AnalyticsReport> generateAnalyticsReport(AnalyticsReportRequest request,
+            AccountAnalyticsService analyticsService) {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(analyticsService, "analyticsService");
+        List<AccountSnapshot> snapshots = createAccountSnapshots();
+        AnalyticsReportOperation operation = new AnalyticsReportOperation(request, analyticsService, snapshots);
+        CompletableFuture<AnalyticsReport> reportFuture = operation.getReportFuture();
+        CompletableFuture<OperationResult> operationFuture = queueOperation(operation);
+        operationFuture.whenComplete((result, error) -> {
+            if (error != null) {
+                reportFuture.completeExceptionally(error);
+            } else if (!result.isSuccess() && !reportFuture.isDone()) {
+                reportFuture.completeExceptionally(new IllegalStateException(result.getMessage()));
+            }
+        });
+        return reportFuture;
     }
 
     public synchronized CompletableFuture<OperationResult> deposit(int accountNumber, double amount) {
@@ -232,6 +255,12 @@ public class Bank implements Serializable {
                 System.err.println("Observer notification failed: " + e.getMessage());
             }
         }
+    }
+
+    private synchronized List<AccountSnapshot> createAccountSnapshots() {
+        return accounts.values().stream()
+                .map(AccountSnapshot::fromAccount)
+                .collect(Collectors.toList());
     }
 
     private void initializeTransientState() {

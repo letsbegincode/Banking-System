@@ -124,6 +124,20 @@ classDiagram
 4. Accounts broadcast the resulting transaction through the observer list. `ConsoleNotifier` prints feedback; `TransactionLogger` writes audit lines.
 5. On exit, `ConsoleUI` invokes `bank.shutdown()` to await outstanding futures before `BankDAO.saveBank(bank)` updates `banking_system.ser` with the latest serialized snapshot.
 
+## Reporting and Analytics
+- The reporting subsystem now exposes both per-account statements and cross-portfolio analytics. Requests are described by `AnalyticsReportRequest`, which captures the KPI window (start/end dates), high-value anomaly threshold, and the rolling aggregation window (default seven days) used for trend smoothing.
+- `AccountAnalyticsService` derives the following KPIs for every request:
+  - Balance metrics (total, average, median) across all accounts.
+  - Net inflow/outflow totals per window.
+  - Daily net change trend points with a configurable rolling average window.
+  - Account-level balance snapshots containing current balance and net movement during the period.
+  - Anomaly flags for negative balances and transactions exceeding the configured threshold.
+- Long-running analytics are executed asynchronously via `AnalyticsReportOperation`, which is queued through `Bank.queueOperation`. Callers receive a `CompletableFuture<AnalyticsReport>` that resolves when the executor completes the computation.
+- Console and HTTP clients share the analytics pipeline:
+  - `ReportFlow` prompts for optional start/end dates, anomaly threshold, and rolling window before requesting analytics. `AnalyticsPresenter` renders summaries and produces CSV/JSON exports for operators.
+  - `BankHttpServer` exposes `/reports/analytics.json` and `/reports/analytics.csv` endpoints. Optional query parameters `start`, `end`, `threshold`, and `window` map to `AnalyticsReportRequest` fields.
+- Aggregation defaults: if callers omit the time window the system evaluates the previous 30 days of activity, smoothing daily trends with a 7-day rolling average and flagging transactions ≥ 5000 monetary units.
+
 ## Extension Points
 - **New account type:** Implement a subclass of `Account` and update `AccountFactory` to instantiate it.
 - **Additional operations:** Add a new `AccountOperation` implementation and expose it in `ConsoleUI`.
