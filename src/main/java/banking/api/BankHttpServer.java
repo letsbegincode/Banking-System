@@ -2,6 +2,12 @@ package banking.api;
 
 import banking.account.Account;
 import banking.operation.OperationResult;
+import banking.security.AuthenticationToken;
+import banking.security.AuthorizationService;
+import banking.security.ForbiddenException;
+import banking.security.Permission;
+import banking.security.TokenService;
+import banking.security.UnauthorizedException;
 import banking.service.Bank;
 
 import com.sun.net.httpserver.Headers;
@@ -30,12 +36,17 @@ import java.util.concurrent.Executors;
 public class BankHttpServer {
     private final Bank bank;
     private final int requestedPort;
+    private final TokenService tokenService;
+    private final AuthorizationService authorizationService;
     private HttpServer server;
     private ExecutorService executorService;
 
-    public BankHttpServer(Bank bank, int port) {
+    public BankHttpServer(Bank bank, int port, TokenService tokenService,
+                          AuthorizationService authorizationService) {
         this.bank = Objects.requireNonNull(bank, "bank");
         this.requestedPort = port;
+        this.tokenService = Objects.requireNonNull(tokenService, "tokenService");
+        this.authorizationService = Objects.requireNonNull(authorizationService, "authorizationService");
     }
 
     public synchronized void start() {
@@ -68,6 +79,10 @@ public class BankHttpServer {
         }
     }
 
+    public synchronized boolean isRunning() {
+        return server != null;
+    }
+
     public synchronized int getPort() {
         if (server == null) {
             throw new IllegalStateException("Server is not running");
@@ -80,6 +95,10 @@ public class BankHttpServer {
         public final void handle(HttpExchange exchange) throws IOException {
             try {
                 handleInternal(exchange);
+            } catch (UnauthorizedException e) {
+                respond(exchange, 401, jsonError(e.getMessage()));
+            } catch (ForbiddenException e) {
+                respond(exchange, 403, jsonError(e.getMessage()));
             } catch (IllegalArgumentException e) {
                 respond(exchange, 400, jsonError(e.getMessage()));
             } catch (Exception e) {
@@ -90,6 +109,22 @@ public class BankHttpServer {
         }
 
         protected abstract void handleInternal(HttpExchange exchange) throws Exception;
+
+        protected AuthenticationToken requireAuthentication(HttpExchange exchange) {
+            String header = exchange.getRequestHeaders().getFirst("Authorization");
+            if (header == null || header.isBlank() || !header.startsWith("Bearer ")) {
+                throw new UnauthorizedException("Missing bearer token");
+            }
+            String tokenValue = header.substring("Bearer ".length()).trim();
+            return tokenService.validate(tokenValue)
+                .orElseThrow(() -> new UnauthorizedException("Token is invalid or expired"));
+        }
+
+        protected AuthenticationToken requirePermission(HttpExchange exchange, Permission permission) {
+            AuthenticationToken token = requireAuthentication(exchange);
+            authorizationService.ensureAuthorized(token, permission);
+            return token;
+        }
 
         protected void ensureMethod(HttpExchange exchange, String expectedMethod) {
             if (!expectedMethod.equalsIgnoreCase(exchange.getRequestMethod())) {
@@ -154,6 +189,7 @@ public class BankHttpServer {
     private final class HealthHandler extends JsonHandler {
         @Override
         protected void handleInternal(HttpExchange exchange) throws IOException {
+            requirePermission(exchange, Permission.HEALTH_READ);
             ensureMethod(exchange, "GET");
             respond(exchange, 200, "{\"status\":\"ok\"}");
         }
@@ -164,8 +200,10 @@ public class BankHttpServer {
         protected void handleInternal(HttpExchange exchange) throws Exception {
             String method = exchange.getRequestMethod();
             if ("GET".equalsIgnoreCase(method)) {
+                requirePermission(exchange, Permission.ACCOUNT_READ);
                 listAccounts(exchange);
             } else if ("POST".equalsIgnoreCase(method)) {
+                requirePermission(exchange, Permission.ACCOUNT_CREATE);
                 createAccount(exchange);
             } else {
                 throw new IllegalArgumentException("Unsupported method. Expected GET or POST");
@@ -207,6 +245,7 @@ public class BankHttpServer {
         @Override
         protected void handleInternal(HttpExchange exchange) throws Exception {
             ensureMethod(exchange, "POST");
+            requirePermission(exchange, Permission.FUNDS_DEPOSIT);
             Map<String, String> params = parseParams(exchange);
             int accountNumber = parseAccountNumber(params.get("accountNumber"));
             double amount = parseAmount(params.get("amount"));
@@ -219,6 +258,7 @@ public class BankHttpServer {
         @Override
         protected void handleInternal(HttpExchange exchange) throws Exception {
             ensureMethod(exchange, "POST");
+            requirePermission(exchange, Permission.FUNDS_WITHDRAW);
             Map<String, String> params = parseParams(exchange);
             int accountNumber = parseAccountNumber(params.get("accountNumber"));
             double amount = parseAmount(params.get("amount"));
@@ -231,6 +271,7 @@ public class BankHttpServer {
         @Override
         protected void handleInternal(HttpExchange exchange) throws Exception {
             ensureMethod(exchange, "POST");
+            requirePermission(exchange, Permission.FUNDS_TRANSFER);
             Map<String, String> params = parseParams(exchange);
             int source = parseAccountNumber(params.get("sourceAccount"));
             int target = parseAccountNumber(params.get("targetAccount"));

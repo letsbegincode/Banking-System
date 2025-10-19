@@ -2,6 +2,14 @@ package banking.test;
 
 import banking.account.Account;
 import banking.api.BankHttpServer;
+import banking.security.AuthenticationService;
+import banking.security.AuthenticationToken;
+import banking.security.AuthorizationService;
+import banking.security.CredentialStore;
+import banking.security.OperatorCredential;
+import banking.security.PasswordHasher;
+import banking.security.Role;
+import banking.security.TokenService;
 import banking.report.AccountStatement;
 import banking.report.StatementGenerator;
 import banking.service.Bank;
@@ -13,8 +21,10 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.time.LocalDate;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 public final class BankTestRunner {
@@ -150,33 +160,41 @@ public final class BankTestRunner {
 
     private void shouldServeHttpApi() {
         Bank bank = new Bank();
-        BankHttpServer server = new BankHttpServer(bank, 0);
+        TokenService tokenService = new TokenService();
+        AuthorizationService authorizationService = new AuthorizationService();
+        BankHttpServer server = new BankHttpServer(bank, 0, tokenService, authorizationService);
+        PasswordHasher hasher = new PasswordHasher();
+        CredentialStore store = new CredentialStore();
+        store.store(new OperatorCredential("tester", hasher.hash("password"), Set.of(Role.ADMIN)));
+        AuthenticationService authenticationService = new AuthenticationService(
+            store, hasher, tokenService, Duration.ofHours(1));
+        AuthenticationToken token = authenticationService.login("tester", "password");
         try {
             server.start();
             int port = server.getPort();
             String baseUrl = "http://localhost:" + port;
 
             HttpResponse createSavings = sendRequest("POST", baseUrl + "/accounts",
-                    "name=Grace&type=savings&deposit=1500");
+                    "name=Grace&type=savings&deposit=1500", token.token());
             assertEquals(201, createSavings.statusCode(), "Account creation should return 201");
             int savingsAccount = extractAccountNumber(createSavings.body());
 
             HttpResponse createCurrent = sendRequest("POST", baseUrl + "/accounts",
-                    "name=Henry&type=current&deposit=50");
+                    "name=Henry&type=current&deposit=50", token.token());
             assertEquals(201, createCurrent.statusCode(), "Account creation should return 201");
             int currentAccount = extractAccountNumber(createCurrent.body());
 
             HttpResponse deposit = sendRequest("POST", baseUrl + "/operations/deposit",
-                    "accountNumber=" + savingsAccount + "&amount=100");
+                    "accountNumber=" + savingsAccount + "&amount=100", token.token());
             assertEquals(200, deposit.statusCode(), "Deposit should succeed");
             assertTrue(deposit.body().contains("\"success\":true"), "Deposit response should indicate success");
 
             HttpResponse transfer = sendRequest("POST", baseUrl + "/operations/transfer",
-                    "sourceAccount=" + savingsAccount + "&targetAccount=" + currentAccount + "&amount=75");
+                    "sourceAccount=" + savingsAccount + "&targetAccount=" + currentAccount + "&amount=75", token.token());
             assertEquals(200, transfer.statusCode(), "Transfer should succeed");
             assertTrue(transfer.body().contains("\"success\":true"), "Transfer response should indicate success");
 
-            HttpResponse accounts = sendRequest("GET", baseUrl + "/accounts", null);
+            HttpResponse accounts = sendRequest("GET", baseUrl + "/accounts", null, token.token());
             assertEquals(200, accounts.statusCode(), "Accounts listing should succeed");
             assertTrue(accounts.body().contains("\"balance\":1525.00"),
                     "Savings account should reflect post-transfer balance");
@@ -188,12 +206,15 @@ public final class BankTestRunner {
         }
     }
 
-    private HttpResponse sendRequest(String method, String url, String body) {
+    private HttpResponse sendRequest(String method, String url, String body, String token) {
         try {
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod(method);
             connection.setDoInput(true);
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=utf-8");
+            if (token != null) {
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+            }
             if (body != null && !body.isEmpty()) {
                 byte[] payload = body.getBytes(StandardCharsets.UTF_8);
                 connection.setDoOutput(true);
