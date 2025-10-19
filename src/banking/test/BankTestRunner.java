@@ -2,9 +2,13 @@ package banking.test;
 
 import banking.account.Account;
 import banking.api.BankHttpServer;
+import banking.report.AccountAnalyticsService;
 import banking.report.AccountStatement;
+import banking.report.AnalyticsReport;
+import banking.report.AnalyticsReportRequest;
 import banking.report.StatementGenerator;
 import banking.service.Bank;
+import banking.ui.presenter.AnalyticsPresenter;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -39,6 +43,8 @@ public final class BankTestRunner {
         execute("interest applied to savings accounts", this::shouldApplyInterest);
         execute("statement summarizes period balances", this::shouldGenerateStatement);
         execute("http gateway exposes core workflows", this::shouldServeHttpApi);
+        execute("analytics aggregates balances and trends", this::shouldGenerateAnalyticsReport);
+        execute("analytics exports format csv and json", this::shouldFormatAnalyticsExports);
     }
 
     private void execute(String name, TestCase testCase) {
@@ -226,6 +232,73 @@ public final class BankTestRunner {
                 });
             } catch (IOException ignored) {
             }
+        }
+    }
+
+    private void shouldGenerateAnalyticsReport() {
+        Bank bank = new Bank();
+        try {
+            Account alpha = bank.createAccount("Iris", "savings", 0);
+            Account beta = bank.createAccount("Jules", "current", 0);
+
+            bank.deposit(alpha.getAccountNumber(), 1600.0).join();
+            bank.withdraw(alpha.getAccountNumber(), 200.0).join();
+            bank.deposit(beta.getAccountNumber(), 600.0).join();
+            bank.transfer(beta.getAccountNumber(), alpha.getAccountNumber(), 150.0).join();
+
+            AnalyticsReportRequest request = AnalyticsReportRequest.builder()
+                    .withStartDate(LocalDate.now().minusDays(2))
+                    .withEndDate(LocalDate.now().plusDays(1))
+                    .withLargeTransactionThreshold(400.0)
+                    .withRollingWindowDays(2)
+                    .build();
+            AnalyticsReport report = bank.generateAnalyticsReport(request, new AccountAnalyticsService()).join();
+
+            assertEquals(2, report.balanceSnapshots().size(), "Both accounts should be represented");
+            assertTrue(report.totalBalance() > 0, "Total balance should reflect account holdings");
+            assertTrue(report.trendPoints().size() >= 3, "Trend should include multiple days");
+
+            double alphaNetChange = report.balanceSnapshots().stream()
+                    .filter(s -> s.accountNumber() == alpha.getAccountNumber())
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("Missing alpha snapshot"))
+                    .netChange();
+            assertEquals(1550.0, alphaNetChange, 0.0001, "Alpha net change should reflect transactions");
+
+            boolean anomalyDetected = report.anomalies().stream()
+                    .anyMatch(anomaly -> anomaly.accountNumber() == alpha.getAccountNumber()
+                            && anomaly.description().contains("High value"));
+            assertTrue(anomalyDetected, "High value transaction anomaly should be reported");
+        } finally {
+            bank.shutdown();
+        }
+    }
+
+    private void shouldFormatAnalyticsExports() {
+        Bank bank = new Bank();
+        try {
+            Account account = bank.createAccount("Kara", "savings", 0);
+            bank.deposit(account.getAccountNumber(), 1300.0).join();
+            bank.withdraw(account.getAccountNumber(), 100.0).join();
+
+            AnalyticsReportRequest request = AnalyticsReportRequest.builder()
+                    .withStartDate(LocalDate.now().minusDays(1))
+                    .withEndDate(LocalDate.now().plusDays(1))
+                    .build();
+            AnalyticsReport report = bank.generateAnalyticsReport(request, new AccountAnalyticsService()).join();
+
+            AnalyticsPresenter presenter = new AnalyticsPresenter();
+            String csv = presenter.toCsv(report);
+            String json = presenter.toJson(report);
+
+            assertTrue(csv.contains("totalBalance"), "CSV should list total balance metric");
+            assertTrue(csv.contains(Integer.toString(account.getAccountNumber())),
+                    "CSV should include account number");
+            assertTrue(json.contains("\"balances\""), "JSON should embed balances section");
+            assertTrue(json.contains(String.format(java.util.Locale.US, "\"totalBalance\":%.2f", report.totalBalance())),
+                    "JSON should embed numeric totals");
+        } finally {
+            bank.shutdown();
         }
     }
 

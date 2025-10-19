@@ -202,6 +202,24 @@ public class Bank implements Serializable {
                 .collect(Collectors.toList());
     }
 
+    public CompletableFuture<AnalyticsReport> generateAnalyticsReport(AnalyticsReportRequest request,
+            AccountAnalyticsService analyticsService) {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(analyticsService, "analyticsService");
+        List<AccountSnapshot> snapshots = createAccountSnapshots();
+        AnalyticsReportOperation operation = new AnalyticsReportOperation(request, analyticsService, snapshots);
+        CompletableFuture<AnalyticsReport> reportFuture = operation.getReportFuture();
+        CompletableFuture<OperationResult> operationFuture = queueOperation(operation);
+        operationFuture.whenComplete((result, error) -> {
+            if (error != null) {
+                reportFuture.completeExceptionally(error);
+            } else if (!result.isSuccess() && !reportFuture.isDone()) {
+                reportFuture.completeExceptionally(new IllegalStateException(result.getMessage()));
+            }
+        });
+        return reportFuture;
+    }
+
     public synchronized CompletableFuture<OperationResult> deposit(int accountNumber, double amount) {
         Account account = accounts.get(accountNumber);
         if (account == null) {
@@ -332,6 +350,12 @@ public class Bank implements Serializable {
                 System.err.println("Observer notification failed: " + e.getMessage());
             }
         }
+    }
+
+    private synchronized List<AccountSnapshot> createAccountSnapshots() {
+        return accounts.values().stream()
+                .map(AccountSnapshot::fromAccount)
+                .collect(Collectors.toList());
     }
 
     private void initializeTransientState() {

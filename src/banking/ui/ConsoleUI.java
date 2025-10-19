@@ -1,6 +1,7 @@
 package banking.ui;
 
 import banking.persistence.BankDAO;
+import banking.report.AccountAnalyticsService;
 import banking.report.StatementGenerator;
 import banking.service.Bank;
 import banking.ui.console.ConsoleIO;
@@ -10,6 +11,7 @@ import banking.ui.flow.AccountManagementFlow;
 import banking.ui.flow.AccountOperationsFlow;
 import banking.ui.flow.ReportFlow;
 import banking.ui.presenter.AccountPresenter;
+import banking.ui.presenter.AnalyticsPresenter;
 import banking.ui.presenter.TransactionPresenter;
 import banking.ui.presenter.StatementPresenter;
 
@@ -33,7 +35,10 @@ public class ConsoleUI {
         this.accountManagementFlow = new AccountManagementFlow(bank, io, accountPresenter);
         StatementGenerator statementGenerator = new StatementGenerator();
         StatementPresenter statementPresenter = new StatementPresenter(io, transactionPresenter);
-        this.reportFlow = new ReportFlow(bank, io, accountPresenter, statementGenerator, statementPresenter);
+        AccountAnalyticsService analyticsService = new AccountAnalyticsService();
+        AnalyticsPresenter analyticsPresenter = new AnalyticsPresenter(io);
+        this.reportFlow = new ReportFlow(bank, io, accountPresenter, statementGenerator, statementPresenter,
+                analyticsService, analyticsPresenter);
     }
 
     public void start() {
