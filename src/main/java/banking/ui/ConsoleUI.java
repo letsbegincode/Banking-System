@@ -1,8 +1,11 @@
 package banking.ui;
 
+<<<<<<< HEAD
 import banking.api.BankHttpServer;
 import banking.persistence.BankDAO;
 import banking.report.AccountAnalyticsService;
+=======
+>>>>>>> origin/pr/20
 import banking.report.StatementGenerator;
 import banking.report.analytics.AnalyticsReportService;
 import banking.report.analytics.AnomalyDetectionService;
@@ -115,7 +118,6 @@ public class ConsoleUI {
     private boolean exitApplication() {
         apiServerFlow.shutdown();
         bank.shutdown();
-        BankDAO.saveBank(bank);
         io.success("Thank you for using our banking system. Goodbye!");
         return true;
     }

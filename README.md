@@ -8,13 +8,13 @@ A modular Java banking platform that simulates common retail banking flows such 
 - **Operator Console:** Guided CLI backed by `ConsoleUI` for everyday teller workflows, including quick search and reporting utilities.
 - **HTTP API:** `ApiApplication` wraps the domain layer in a hardened HTTP adapter that exposes health, metrics, account discovery, account maintenance, and transaction queuing endpoints suitable for automation and integration tests.
 - **Observability:** Observer pattern connects `ConsoleNotifier` and `TransactionLogger` to important account events for traceability.
-- **Persistence:** `BankDAO` now persists the in-memory `Bank` aggregate through a pluggable repository. Production deployments stream state into a MySQL schema managed by automated migrations while local development can still fall back to the snapshot file store.
+- **Persistence:** `AccountRepository` pluggably stores serialized account aggregates. The default in-memory repository is ideal for demos, while the JDBC implementation targets relational databases with migration support.
 
 ## Architecture Overview
 The application uses a layered design built around the `Bank` aggregate:
 - **Presentation:** `ConsoleUI` orchestrates user interactions and translates console actions into domain commands.
 - **Domain & Services:** `Bank`, `Account` hierarchy, and concrete `AccountOperation` implementations encapsulate business rules and concurrency controls.
-- **Infrastructure:** `BankRepositoryFactory` selects a JDBC-backed repository (with migration orchestration and connection management) or the legacy snapshot adapter based on environment configuration, while the asynchronous executor coordinates background processing.
+- **Infrastructure:** `AccountRepository` (with `JdbcAccountRepository` and `InMemoryAccountRepository`) provides durable storage. `MigrationRunner` applies SQL migrations during startup, and the asynchronous executor coordinates background processing.
 
 Detailed designs and diagrams are available in the [System Design](docs/architecture-system-design.md) and [Low-Level Architecture](docs/architecture-low-level.md) guides. The high-level component relationships are shown below.
 
@@ -22,7 +22,7 @@ Detailed designs and diagrams are available in the [System Design](docs/architec
 graph TD
     ConsoleUI -->|issues commands| Bank
     ConsoleUI -->|notifies| ConsoleNotifier
-    Bank -->|persists via| BankDAO
+    Bank -->|persists via| AccountRepository
     Bank -->|owns| AccountFactory
     Bank -->|manages| Account
     Account -->|emits events| TransactionLogger
@@ -100,6 +100,29 @@ graph TD
 3. **Domain Testing:** Expand the automated test suite with property-based tests and golden-file regression checks for reporting outputs.
 4. **Performance:** Introduce connection pooling and bulk operation APIs for batched ingest workloads.
 5. **Disaster Recovery Drills:** Automate failover simulations across regions and document recovery point objectives empirically.
+1. Install JDK 11+ and clone the repository.
+2. Compile from the project root: `javac $(find src/main/java -name "*.java")`.
+3. Start the console application: `java -cp src/main/java banking.BankingApplication`.
+4. By default the in-memory repository is used. To exercise the JDBC path, set environment variables such as `BANKING_PERSISTENCE=jdbc` and `BANKING_JDBC_URL=jdbc:h2:mem:bank;DB_CLOSE_DELAY=-1` before launching.
+5. When you are done for the day, exit through menu option **7** so outstanding asynchronous operations flush and the repository closes cleanly.
+
+
+### Data Backup & Restore
+- **Backup:** For JDBC deployments, follow your database's backup tooling (e.g., `pg_dump`, `mysqldump`, H2 file copy). For in-memory demos, no backup is required.
+- **Restore:** Restore the relational database snapshot before launching. The migration runner will detect existing schema versions and skip reapplied scripts.
+- **Reset:** Drop the `accounts` table (or use a new JDBC URL) to clear persisted data. The in-memory repository always starts empty.
+
+### Troubleshooting
+- **Database Connectivity:** Verify JDBC URLs, credentials, and drivers (`BANKING_JDBC_DRIVER`) when the application cannot connect during startup.
+- **Stalled Operations:** Ensure the executor thread pool is not exhausted; restart the app to reinitialize the queue.
+- **Invalid Inputs:** Watch console prompts—validation errors indicate the value that needs correction.
+
+## Roadmap
+1. **API Gateway:** Expose REST endpoints with Spring Boot for web/mobile clients.
+2. **Observability Enhancements:** Wire the repository to metrics/logging to monitor query latency and failure rates.
+3. **Authentication:** Add role-based access control with audit logging.
+4. **Reporting Suite:** Generate configurable statements and regulatory reports.
+5. **CI/CD Automation:** Introduce automated builds, tests, and packaging pipelines.
 
 ## Contributing & Governance
 Community guidelines live in [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Start there before submitting issues or pull requests.

@@ -23,7 +23,10 @@ package "Domain" {
   [Observers]
 }
 package "Infrastructure" {
-  [BankDAO]
+  [AccountRepository]
+  [JdbcAccountRepository]
+  [InMemoryAccountRepository]
+  [MigrationRunner]
   [Operation Queue]
   [ExecutorService]
   [Snapshot Store]
@@ -36,8 +39,11 @@ package "Infrastructure" {
 [Account Hierarchy] --> [Observers]
 [Bank] --> [ExecutorService]
 [Operation Queue] --> [ExecutorService]
-[Bank] --> [BankDAO]
-[BankDAO] --> [Snapshot Store]
+[Bank] --> [AccountRepository]
+[AccountRepository] <|-- [JdbcAccountRepository]
+[AccountRepository] <|-- [InMemoryAccountRepository]
+[MigrationRunner] --> [JdbcAccountRepository]
+[JdbcAccountRepository] --> [Relational Store]
 @enduml
 ```
 
@@ -64,13 +70,14 @@ flowchart LR
 
 ## Scalability Considerations
 - **Thread Pool Sizing:** The executor currently uses a fixed thread pool. Increase the pool or migrate to a work-stealing pool when adding high-volume batch jobs.
-- **External Storage:** Replace serialization with a transactional database (PostgreSQL, MySQL) to support concurrent clients and reporting workloads.
+- **External Storage:** Enable the JDBC repository with a managed database (PostgreSQL, MySQL, H2 for demos) to support concurrent clients and reporting workloads. Additional tables and migrations can be layered on incrementally.
 - **Service Interfaces:** Wrap the domain layer in REST or gRPC endpoints to support distributed user interfaces and automation.
 - **Horizontal Scale:** Once stateless adapters exist, run multiple instances behind a load balancer and rely on the shared database for consistency.
 
 ## Infrastructure & Deployment
 - **Local:** Developers default to Docker Compose, which provisions MySQL alongside the console/API containers for parity with staging. Snapshot mode is still available for isolated experiments but should not be committed to source control.
 - **Staging/Production Concept:** Package the application as a runnable JAR. Deploy to Kubernetes or VMs with managed MySQL instances, scheduled logical backups, and secrets-driven configuration.
+
 - **Observability:** Extend `TransactionLogger` to integrate with structured logging frameworks (e.g., Logback). Capture metrics for operation latency and failure counts.
 - **Security:** Introduce secrets management for future database credentials and enforce TLS when exposing remote APIs.
 
@@ -126,7 +133,7 @@ Automation clients and staging smoke tests interact with the unified HTTP adapte
 - **Assumptions & Future Hardening:** Transport security (TLS) and secret distribution are out of scope for the current CLI deployment. When deploying remotely, terminate TLS at the load balancer or service host, integrate with an HSM or secret manager, and enable auditing/alerting on repeated authentication failures.
 
 ## Disaster Recovery
-- Store serialized snapshots (or database backups) offsite.
+- Store database backups (or in-memory snapshots during development) offsite.
 - Validate backups by performing periodic restore drills in a staging environment.
 - Automate log shipping to aid in reconstructing transaction sequences during investigations.
 

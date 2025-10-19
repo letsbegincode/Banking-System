@@ -12,6 +12,8 @@ import banking.report.analytics.AnomalyReport;
 import banking.report.analytics.RangeSummary;
 import banking.report.analytics.TrendReport;
 import banking.report.format.ReportFormatter;
+import banking.report.AccountStatement;
+import banking.report.StatementGenerator;
 import banking.service.Bank;
 import banking.transaction.BaseTransaction;
 import banking.ui.console.ConsoleIO;
@@ -43,6 +45,7 @@ public class ReportFlow {
             StatementPresenter statementPresenter,
             AccountAnalyticsService analyticsService,
             AnalyticsPresenter analyticsPresenter) {
+            StatementPresenter statementPresenter) {
         this.bank = bank;
         this.io = io;
         this.accountPresenter = accountPresenter;
@@ -62,6 +65,7 @@ public class ReportFlow {
         io.info("6. Export Portfolio Analytics (CSV)");
         io.info("7. Export Portfolio Analytics (JSON)");
         io.info("8. Back to Main Menu");
+        io.info("5. Back to Main Menu");
 
         int choice = io.promptInt("Select a report to generate: ");
         switch (choice) {
@@ -73,6 +77,7 @@ public class ReportFlow {
             case 6 -> exportPortfolioAnalyticsCsv();
             case 7 -> exportPortfolioAnalyticsJson();
             case 8 -> io.info("Returning to main menu...");
+            case 5 -> io.info("Returning to main menu...");
             default -> io.error("Invalid choice!");
         }
     }
@@ -225,4 +230,5 @@ public class ReportFlow {
             }
         }
     }
+}
 }
