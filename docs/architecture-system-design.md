@@ -23,10 +23,13 @@ package "Domain" {
   [Observers]
 }
 package "Infrastructure" {
-  [BankDAO]
+  [AccountRepository]
+  [JdbcAccountRepository]
+  [InMemoryAccountRepository]
+  [MigrationRunner]
   [Operation Queue]
   [ExecutorService]
-  [Serialized Store]
+  [Relational Store]
 }
 [ConsoleUI] --> [Bank]
 [Bank] --> [AccountFactory]
@@ -36,8 +39,11 @@ package "Infrastructure" {
 [Account Hierarchy] --> [Observers]
 [Bank] --> [ExecutorService]
 [Operation Queue] --> [ExecutorService]
-[Bank] --> [BankDAO]
-[BankDAO] --> [Serialized Store]
+[Bank] --> [AccountRepository]
+[AccountRepository] <|-- [JdbcAccountRepository]
+[AccountRepository] <|-- [InMemoryAccountRepository]
+[MigrationRunner] --> [JdbcAccountRepository]
+[JdbcAccountRepository] --> [Relational Store]
 @enduml
 ```
 
@@ -45,7 +51,7 @@ package "Infrastructure" {
 1. Operators initiate actions from the CLI. Inputs are validated and mapped to command objects.
 2. Commands are enqueued via `Bank.queueOperation` and drained through the `ExecutorService`, keeping the console responsive while operations run asynchronously against the target `Account` instances.
 3. Each mutation appends a `BaseTransaction` record, enabling audit trails and replay.
-4. Persistence writes the mutated bank aggregate to `banking_system.ser`. Startup reads the file back into memory.
+4. Persistence serializes each mutated account to the configured `AccountRepository`. The JDBC implementation writes blobs into the `accounts` table while the in-memory variant simply keeps copies for fast tests.
 5. Observers emit feedback to the console and structured logs for operators.
 
 ```mermaid
@@ -56,25 +62,25 @@ flowchart LR
     EXEC --> BANK[Bank Service]
     BANK --> ACC[Account Instances]
     ACC --> TXN[Transaction Ledger]
-    BANK --> DAO[BankDAO]
-    DAO --> STORE[(banking_system.ser)]
+    BANK --> REPO[AccountRepository]
+    REPO --> STORE[(Relational Store / In-Memory Cache)]
     ACC --> OBS[Observers]
     OBS --> LOGS[Console Output / Logs]
 ```
 
 ## Scalability Considerations
 - **Thread Pool Sizing:** The executor currently uses a fixed thread pool. Increase the pool or migrate to a work-stealing pool when adding high-volume batch jobs.
-- **External Storage:** Replace serialization with a transactional database (PostgreSQL, MySQL) to support concurrent clients and reporting workloads.
+- **External Storage:** Enable the JDBC repository with a managed database (PostgreSQL, MySQL, H2 for demos) to support concurrent clients and reporting workloads. Additional tables and migrations can be layered on incrementally.
 - **Service Interfaces:** Wrap the domain layer in REST or gRPC endpoints to support distributed user interfaces and automation.
 - **Horizontal Scale:** Once stateless adapters exist, run multiple instances behind a load balancer and rely on the shared database for consistency.
 
 ## Infrastructure & Deployment
-- **Local:** Java CLI application executed on developer machines. Source-controlled `banking_system.ser` should be excluded from commits to prevent leaking data.
-- **Staging/Production Concept:** Package the application as a runnable JAR. Deploy to a container or VM with scheduled backups of the persistence file or database.
+- **Local:** Java CLI application executed on developer machines. Default configuration uses the in-memory repository; set `banking.persistence=jdbc` with an H2 URL to exercise the migration and JDBC code paths.
+- **Staging/Production Concept:** Package the application as a runnable JAR. Deploy to a container or VM with scheduled backups of the relational database. Ship migration scripts alongside the artifact so environments bootstrap automatically.
 - **Observability:** Extend `TransactionLogger` to integrate with structured logging frameworks (e.g., Logback). Capture metrics for operation latency and failure counts.
 - **Security:** Introduce secrets management for future database credentials and enforce TLS when exposing remote APIs.
 
 ## Disaster Recovery
-- Store serialized snapshots (or database backups) offsite.
+- Store database backups (or in-memory snapshots during development) offsite.
 - Validate backups by performing periodic restore drills in a staging environment.
 - Automate log shipping to aid in reconstructing transaction sequences during investigations.

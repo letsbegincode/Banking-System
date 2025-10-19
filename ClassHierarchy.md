@@ -184,15 +184,21 @@
 │  └─────────────────────────────────────────────────────────────────────────────┘   │
 │                                                                                     │
 │  ┌─────────────────────────────────────────────────────────────────────────────┐   │
-│  │                             BankDAO                                        │   │
-│  │                        (Data Access Object)                                │   │
+│  │                     AccountRepository & Friends                            │   │
+│  │                             (Gateway)                                      │   │
 │  │                                                                             │   │
-│  │  Static Methods:                                                           │   │
-│  │  • saveBank(Bank): void                                                    │   │
-│  │    - Serializes bank data to file                                          │   │
-│  │  • loadBank(): Bank                                                        │   │
-│  │    - Deserializes bank data from file                                      │   │
-│  │    - Creates new bank if file doesn't exist                                │   │
+│  │  Core Operations:                                                          │   │
+│  │  • findAllAccounts(): List<Account>                                        │   │
+│  │  • findAccount(int): Account                                               │   │
+│  │  • saveAccount(Account) / saveAccounts(Collection<Account>)                │   │
+│  │  • deleteAccount(int): boolean                                             │   │
+│  │                                                                             │   │
+│  │  Implementations:                                                          │   │
+│  │  • InMemoryAccountRepository – deep-copies aggregates for deterministic    │   │
+│  │    tests                                                                   │   │
+│  │  • JdbcAccountRepository – persists serialized aggregates into the         │   │
+│  │    `accounts` table using JDBC transactions                               │   │
+│  │  • MigrationRunner – executes `db/migration` SQL scripts before JDBC usage │   │
 │  └─────────────────────────────────────────────────────────────────────────────┘   │
 │                                                                                     │
 │  ┌─────────────────────────────────────────────────────────────────────────────┐   │
@@ -387,7 +393,7 @@
 │         │                                                                          │
 │         │ uses                                                                     │
 │         ▼                                                                          │
-│  BankDAO ────────────────┐                                                        │
+│  AccountRepository ──────┐                                                        │
 │         │                 │ uses                                                  │
 │         │                 ▼                                                       │
 │         │           AccountOperation (interface) ──────────────┐                  │
@@ -421,7 +427,7 @@
 | **Factory Pattern** | Create different account types | `AccountFactory` |
 | **Observer Pattern** | Notifications and logging | `AccountObserver`, `ConsoleNotifier`, `TransactionLogger` |
 | **Command Pattern** | Encapsulate operations | `AccountOperation`, `DepositOperation`, `WithdrawOperation`, `TransferOperation` |
-| **DAO Pattern** | Data persistence | `BankDAO` |
+| **Repository Pattern** | Data persistence abstraction | `AccountRepository`, `JdbcAccountRepository`, `InMemoryAccountRepository` |
 | **Template Method** | Transaction structure | `BaseTransaction` with abstract `getType()` |
 | **Strategy Pattern** | Different withdrawal strategies | `canWithdraw()` in different account types |
 
@@ -433,7 +439,7 @@
 - **Account Types**: Specific business rules for each account type
 
 ### **Data Management**
-- **BankDAO**: Persistence layer, serialization
+- **AccountRepository Implementations**: Persistence layer (in-memory & JDBC)
 - **BaseTransaction**: Transaction data structure
 - **Transaction Types**: Specific transaction behaviors
 

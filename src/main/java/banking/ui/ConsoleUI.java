@@ -1,6 +1,5 @@
 package banking.ui;
 
-import banking.persistence.BankDAO;
 import banking.report.StatementGenerator;
 import banking.service.Bank;
 import banking.ui.console.ConsoleIO;
@@ -72,7 +71,6 @@ public class ConsoleUI {
 
     private boolean exitApplication() {
         bank.shutdown();
-        BankDAO.saveBank(bank);
         io.success("Thank you for using our banking system. Goodbye!");
         return true;
     }

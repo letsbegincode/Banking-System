@@ -5,6 +5,7 @@ import banking.api.BankHttpServer;
 import banking.report.AccountStatement;
 import banking.report.StatementGenerator;
 import banking.service.Bank;
+import banking.persistence.memory.InMemoryAccountRepository;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -61,7 +62,7 @@ public final class BankTestRunner {
     }
 
     private void shouldDepositFunds() {
-        Bank bank = new Bank();
+        Bank bank = new Bank(new InMemoryAccountRepository());
         try {
             Account account = bank.createAccount("Alice", "savings", 0);
             CompletableFuture<?> future = bank.deposit(account.getAccountNumber(), 200.0);
@@ -76,7 +77,7 @@ public final class BankTestRunner {
     }
 
     private void shouldWithdrawFunds() {
-        Bank bank = new Bank();
+        Bank bank = new Bank(new InMemoryAccountRepository());
         try {
             Account account = bank.createAccount("Bob", "savings", 0);
             bank.deposit(account.getAccountNumber(), 2000.0).join();
@@ -91,7 +92,7 @@ public final class BankTestRunner {
     }
 
     private void shouldTransferFunds() {
-        Bank bank = new Bank();
+        Bank bank = new Bank(new InMemoryAccountRepository());
         try {
             Account source = bank.createAccount("Charlie", "current", 0);
             Account target = bank.createAccount("Dana", "savings", 0);
@@ -111,7 +112,7 @@ public final class BankTestRunner {
     }
 
     private void shouldApplyInterest() {
-        Bank bank = new Bank();
+        Bank bank = new Bank(new InMemoryAccountRepository());
         try {
             Account savings = bank.createAccount("Eve", "savings", 0);
             bank.deposit(savings.getAccountNumber(), 1200.0).join();
@@ -127,7 +128,7 @@ public final class BankTestRunner {
     }
 
     private void shouldGenerateStatement() {
-        Bank bank = new Bank();
+        Bank bank = new Bank(new InMemoryAccountRepository());
         try {
             Account account = bank.createAccount("Frank", "current", 0);
             bank.deposit(account.getAccountNumber(), 500.0).join();
@@ -136,7 +137,10 @@ public final class BankTestRunner {
             StatementGenerator generator = new StatementGenerator();
             LocalDate start = LocalDate.now().minusDays(1);
             LocalDate end = LocalDate.now().plusDays(1);
-            AccountStatement statement = generator.generate(account, start, end);
+            Account refreshed = bank.getAccount(account.getAccountNumber());
+            assertNotNull(refreshed, "Account should be retrievable before generating statement");
+            assertEquals(2, refreshed.getTransactions().size(), "Transaction history should contain deposit and withdrawal");
+            AccountStatement statement = generator.generate(refreshed, start, end);
 
             assertEquals(0.0, statement.getOpeningBalance(), 0.0001, "Opening balance should start at zero");
             assertEquals(300.0, statement.getClosingBalance(), 0.0001, "Closing balance should reflect net activity");
@@ -149,7 +153,7 @@ public final class BankTestRunner {
     }
 
     private void shouldServeHttpApi() {
-        Bank bank = new Bank();
+        Bank bank = new Bank(new InMemoryAccountRepository());
         BankHttpServer server = new BankHttpServer(bank, 0);
         try {
             server.start();
