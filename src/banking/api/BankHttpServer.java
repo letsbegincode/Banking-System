@@ -1,8 +1,17 @@
 package banking.api;
 
 import banking.account.Account;
+import banking.api.middleware.ErrorHandling;
+import banking.api.middleware.ErrorResponse;
+import banking.api.middleware.HttpRequestFilter;
+import banking.api.middleware.RateLimiter;
+import banking.api.middleware.RateLimitingFilter;
+import banking.api.middleware.RequestContext;
+import banking.api.middleware.RequestResponseLogger;
+import banking.api.middleware.RequestValidationFilter;
 import banking.operation.OperationResult;
 import banking.service.Bank;
+import banking.telemetry.TelemetryCollector;
 
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
@@ -15,6 +24,8 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -23,6 +34,7 @@ import java.util.Objects;
 import java.util.StringJoiner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Lightweight HTTP facade that exposes a subset of the banking service as REST-style endpoints.
@@ -30,12 +42,21 @@ import java.util.concurrent.Executors;
 public class BankHttpServer {
     private final Bank bank;
     private final int requestedPort;
+    private final RateLimiter rateLimiter;
+    private final List<HttpRequestFilter> filters;
     private HttpServer server;
     private ExecutorService executorService;
+    private Thread shutdownHook;
 
     public BankHttpServer(Bank bank, int port) {
         this.bank = Objects.requireNonNull(bank, "bank");
         this.requestedPort = port;
+        TelemetryCollector collector = TelemetryCollector.getInstance();
+        this.rateLimiter = new RateLimiter(20, Duration.ofSeconds(1));
+        this.filters = List.of(
+                new RateLimitingFilter(rateLimiter),
+                new RequestValidationFilter(4096),
+                new RequestResponseLogger(collector));
     }
 
     public synchronized void start() {
@@ -55,17 +76,27 @@ public class BankHttpServer {
         server.createContext("/operations/transfer", new TransferHandler());
         server.setExecutor(executorService);
         server.start();
+        registerShutdownHook();
     }
 
     public synchronized void stop() {
         if (server != null) {
-            server.stop(0);
+            server.stop(1);
             server = null;
         }
         if (executorService != null) {
-            executorService.shutdownNow();
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
             executorService = null;
         }
+        unregisterShutdownHook();
     }
 
     public synchronized int getPort() {
@@ -78,13 +109,31 @@ public class BankHttpServer {
     private abstract class JsonHandler implements HttpHandler {
         @Override
         public final void handle(HttpExchange exchange) throws IOException {
+            RequestContext context = RequestContext.attach(exchange);
+            List<HttpRequestFilter> executedFilters = new ArrayList<>();
+            boolean handled = false;
             try {
+                for (HttpRequestFilter filter : filters) {
+                    filter.before(exchange, context);
+                    executedFilters.add(filter);
+                }
                 handleInternal(exchange);
-            } catch (IllegalArgumentException e) {
-                respond(exchange, 400, jsonError(e.getMessage()));
+                handled = true;
             } catch (Exception e) {
-                respond(exchange, 500, jsonError("Internal server error: " + e.getMessage()));
+                context.recordError(e);
+                ErrorResponse error = ErrorHandling.resolve(e);
+                respond(exchange, error.statusCode(), jsonError(error.message()));
             } finally {
+                for (int i = executedFilters.size() - 1; i >= 0; i--) {
+                    try {
+                        executedFilters.get(i).after(exchange, context);
+                    } catch (Exception ignored) {
+                        // Best-effort cleanup; errors already reported through telemetry.
+                    }
+                }
+                if (!handled && context.statusCode() < 0) {
+                    context.recordResponse(500, 0);
+                }
                 exchange.close();
             }
         }
@@ -144,6 +193,7 @@ public class BankHttpServer {
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(responseBytes);
             }
+            RequestContext.from(exchange).ifPresent(context -> context.recordResponse(status, responseBytes.length));
         }
 
         protected String jsonError(String message) {
@@ -288,4 +338,29 @@ public class BankHttpServer {
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
+    private synchronized void registerShutdownHook() {
+        if (shutdownHook != null) {
+            return;
+        }
+        shutdownHook = new Thread(() -> {
+            try {
+                BankHttpServer.this.stop();
+            } finally {
+                bank.shutdown();
+            }
+        }, "bank-http-shutdown");
+        Runtime.getRuntime().addShutdownHook(shutdownHook);
+    }
+
+    private synchronized void unregisterShutdownHook() {
+        if (shutdownHook == null) {
+            return;
+        }
+        try {
+            Runtime.getRuntime().removeShutdownHook(shutdownHook);
+        } catch (IllegalStateException ignored) {
+            // JVM is already shutting down.
+        }
+        shutdownHook = null;
+    }
 }

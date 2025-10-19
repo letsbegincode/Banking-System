@@ -46,7 +46,7 @@ package "Infrastructure" {
 2. Commands are enqueued via `Bank.queueOperation` and drained through the `ExecutorService`, keeping the console responsive while operations run asynchronously against the target `Account` instances.
 3. Each mutation appends a `BaseTransaction` record, enabling audit trails and replay.
 4. Persistence writes the mutated bank aggregate to `banking_system.ser`. Startup reads the file back into memory.
-5. Observers emit feedback to the console and structured logs for operators.
+5. Observers emit feedback to the console and structured logs for operators, while the telemetry collector produces structured events for dashboards and alerting pipelines.
 
 ```mermaid
 flowchart LR
@@ -68,10 +68,18 @@ flowchart LR
 - **Service Interfaces:** Wrap the domain layer in REST or gRPC endpoints to support distributed user interfaces and automation.
 - **Horizontal Scale:** Once stateless adapters exist, run multiple instances behind a load balancer and rely on the shared database for consistency.
 
+## Hardened HTTP Gateway
+The REST adapter exposed by `BankHttpServer` now mirrors production-grade edge defenses:
+
+- **Validation Filters:** Incoming POST/PUT requests require form or JSON content types and respect conservative payload limits before reaching the domain.
+- **Rate Limiting:** A per-client token bucket throttles bursts, returning `429` when thresholds are exceeded to shield downstream executors.
+- **Structured Logging:** Request/response lifecycles are emitted to the shared telemetry collector so HTTP health shows up beside core banking metrics.
+- **Graceful Shutdown:** Runtime hooks drain in-flight work, coordinating with the bank service shutdown sequence for predictable maintenance windows.
+
 ## Infrastructure & Deployment
 - **Local:** Java CLI application executed on developer machines. Source-controlled `banking_system.ser` should be excluded from commits to prevent leaking data.
 - **Staging/Production Concept:** Package the application as a runnable JAR. Deploy to a container or VM with scheduled backups of the persistence file or database.
-- **Observability:** Extend `TransactionLogger` to integrate with structured logging frameworks (e.g., Logback). Capture metrics for operation latency and failure counts.
+- **Observability:** Use the telemetry collector's structured events to feed logging sinks and metrics backends in addition to the existing transaction log.
 - **Security:** Introduce secrets management for future database credentials and enforce TLS when exposing remote APIs.
 
 ## Disaster Recovery

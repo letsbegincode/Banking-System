@@ -6,6 +6,7 @@ import banking.account.FixedDepositAccount;
 import banking.account.SavingsAccount;
 import banking.observer.AccountObserver;
 import banking.observer.ConsoleNotifier;
+import banking.observer.StructuredTelemetryObserver;
 import banking.observer.TransactionLogger;
 import banking.operation.AccountOperation;
 import banking.operation.DepositOperation;
@@ -242,6 +243,7 @@ public class Bank implements Serializable {
 
         addObserver(new ConsoleNotifier());
         addObserver(new TransactionLogger());
+        addObserver(new StructuredTelemetryObserver());
     }
 
     private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
