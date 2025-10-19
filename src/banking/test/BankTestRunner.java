@@ -12,7 +12,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
@@ -149,6 +151,15 @@ public final class BankTestRunner {
     }
 
     private void shouldServeHttpApi() {
+        Path tempDir;
+        try {
+            tempDir = Files.createTempDirectory("bank-http-test");
+        } catch (IOException e) {
+            throw new AssertionError("Unable to create temp directory", e);
+        }
+        System.setProperty("banking.storage.mode", "snapshot");
+        System.setProperty("banking.data.path", tempDir.resolve("banking_state.properties").toString());
+
         Bank bank = new Bank();
         BankHttpServer server = new BankHttpServer(bank, 0);
         try {
@@ -176,24 +187,55 @@ public final class BankTestRunner {
             assertEquals(200, transfer.statusCode(), "Transfer should succeed");
             assertTrue(transfer.body().contains("\"success\":true"), "Transfer response should indicate success");
 
+            HttpResponse savingsDetails = sendRequest("GET", baseUrl + "/accounts/" + savingsAccount, null);
+            assertEquals(200, savingsDetails.statusCode(), "Account lookup should succeed");
+            assertTrue(savingsDetails.body().contains("\"userName\":\"Grace\""),
+                    "Account payload should contain the owner name");
+
+            HttpResponse rename = sendRequest("PUT", baseUrl + "/accounts/" + currentAccount,
+                    "userName=Henry%20Updated");
+            assertEquals(200, rename.statusCode(), "Rename should succeed");
+            assertTrue(rename.body().contains("Henry Updated"),
+                    "Rename response should include the updated account");
+
+            HttpResponse delete = sendRequest("DELETE", baseUrl + "/accounts/" + currentAccount, null);
+            assertEquals(200, delete.statusCode(), "Account deletion should succeed");
+            assertTrue(delete.body().contains("\"success\":true"),
+                    "Delete response should indicate success");
+
+            HttpResponse deletedLookup = sendRequest("GET", baseUrl + "/accounts/" + currentAccount, null);
+            assertEquals(404, deletedLookup.statusCode(), "Deleted accounts should not be retrievable");
+
             HttpResponse accounts = sendRequest("GET", baseUrl + "/accounts", null);
             assertEquals(200, accounts.statusCode(), "Accounts listing should succeed");
-            assertTrue(accounts.body().contains("\"balance\":1525.00"),
+            assertTrue(accounts.body().contains("\"formattedBalance\":\"1525.00\""),
                     "Savings account should reflect post-transfer balance");
-            assertTrue(accounts.body().contains("\"balance\":125.00"),
-                    "Current account should reflect received transfer");
+            assertFalse(accounts.body().contains("\"formattedBalance\":\"125.00\""),
+                    "Closed accounts should not appear in listings");
         } finally {
             server.stop();
             bank.shutdown();
+            System.clearProperty("banking.storage.mode");
+            System.clearProperty("banking.data.path");
+            try (var paths = Files.walk(tempDir)) {
+                paths.sorted((a, b) -> b.compareTo(a)).forEach(path -> {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (IOException ignored) {
+                    }
+                });
+            } catch (IOException ignored) {
+            }
         }
     }
 
     private HttpResponse sendRequest(String method, String url, String body) {
         try {
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
             connection.setRequestMethod(method);
             connection.setDoInput(true);
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=utf-8");
+            connection.setRequestProperty("X-API-Key", System.getProperty("banking.test.apiKey", "local-dev-key"));
             if (body != null && !body.isEmpty()) {
                 byte[] payload = body.getBytes(StandardCharsets.UTF_8);
                 connection.setDoOutput(true);
@@ -254,6 +296,12 @@ public final class BankTestRunner {
 
     private static void assertTrue(boolean condition, String message) {
         if (!condition) {
+            throw new AssertionError(message);
+        }
+    }
+
+    private static void assertFalse(boolean condition, String message) {
+        if (condition) {
             throw new AssertionError(message);
         }
     }

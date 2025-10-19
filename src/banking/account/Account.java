@@ -25,11 +25,22 @@ public abstract class Account implements Serializable {
     private final String creationDate;
 
     protected Account(String userName, int accountNumber) {
+        this(userName, accountNumber, LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")), 0,
+                List.of());
+    }
+
+    protected Account(String userName, int accountNumber, String creationDate, double balance,
+            List<BaseTransaction> existingTransactions) {
         this.accountNumber = accountNumber;
-        this.balance = 0;
         this.transactions = new ArrayList<>();
-        this.creationDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        this.creationDate = creationDate == null
+                ? LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                : creationDate;
         setUserName(userName);
+        this.balance = balance;
+        if (existingTransactions != null) {
+            this.transactions.addAll(existingTransactions);
+        }
     }
 
     public synchronized void deposit(double amount) {

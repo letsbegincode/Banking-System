@@ -1,6 +1,7 @@
 package banking.ui.flow;
 
 import banking.account.Account;
+import banking.persistence.BankDAO;
 import banking.service.Bank;
 import banking.ui.console.ConsoleIO;
 import banking.ui.presenter.AccountPresenter;
@@ -52,6 +53,7 @@ public class AccountManagementFlow {
                 if (updatedAccount != null) {
                     accountPresenter.showAccountDetails(updatedAccount);
                 }
+                BankDAO.saveBank(bank);
             } else {
                 io.error("Failed to update account holder name. Account may have been removed.");
             }
@@ -75,6 +77,7 @@ public class AccountManagementFlow {
             boolean success = bank.closeAccount(accountNumber);
             if (success) {
                 io.success("Account closed successfully!");
+                BankDAO.saveBank(bank);
             } else {
                 io.error("Failed to close account!");
             }
@@ -89,6 +92,7 @@ public class AccountManagementFlow {
             int processed = bank.addInterestToAllSavingsAccounts();
             if (processed > 0) {
                 io.success("Monthly interest processed for " + processed + " accounts.");
+                BankDAO.saveBank(bank);
             } else {
                 io.warning("No accounts were eligible for monthly interest this cycle.");
             }

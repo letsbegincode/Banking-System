@@ -7,6 +7,10 @@ public class InterestTransaction extends BaseTransaction {
         super(amount);
     }
 
+    public InterestTransaction(double amount, java.time.LocalDateTime timestamp, String transactionId) {
+        super(amount, timestamp, transactionId);
+    }
+
     @Override
     public String getType() {
         return "Interest Added";

@@ -1,5 +1,9 @@
 package banking.account;
 
+import banking.transaction.BaseTransaction;
+
+import java.util.List;
+
 public class CurrentAccount extends Account {
     private static final long serialVersionUID = 1L;
 
@@ -7,6 +11,12 @@ public class CurrentAccount extends Account {
 
     public CurrentAccount(String userName, int accountNumber) {
         super(userName, accountNumber);
+    }
+
+    CurrentAccount(String userName, int accountNumber, String creationDate, double balance, double overdraftLimit,
+            List<BaseTransaction> transactions) {
+        super(userName, accountNumber, creationDate, balance, transactions);
+        this.overdraftLimit = overdraftLimit;
     }
 
     @Override

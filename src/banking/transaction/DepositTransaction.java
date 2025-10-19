@@ -7,6 +7,10 @@ public class DepositTransaction extends BaseTransaction {
         super(amount);
     }
 
+    public DepositTransaction(double amount, java.time.LocalDateTime timestamp, String transactionId) {
+        super(amount, timestamp, transactionId);
+    }
+
     @Override
     public String getType() {
         return "Deposit";

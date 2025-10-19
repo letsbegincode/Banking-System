@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAMESPACE: ${{ github.repository_owner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Compile sources
+        run: |
+          mkdir -p build/classes
+          find src -name '*.java' > sources.txt
+          javac -d build/classes @sources.txt
+
+      - name: Package console jar
+        run: |
+          jar --create --file build/banking-console.jar --main-class banking.BankingApplication -C build/classes .
+
+      - name: Package API jar
+        run: |
+          jar --create --file build/banking-api.jar --main-class banking.api.ApiApplication -C build/classes .
+
+      - name: Run migration script
+        env:
+          BANKING_DATA_PATH: ${{ github.workspace }}/artifacts/data/banking_state.properties
+        run: |
+          mkdir -p artifacts/data
+          bash deploy/scripts/run-migrations.sh
+
+      - name: Run persistence smoke test
+        run: java -cp build/classes banking.test.PersistenceSmokeTest
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push console image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deploy/Dockerfile.console
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/banking-console:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/banking-console:latest
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deploy/Dockerfile.api
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/banking-api:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/banking-api:latest
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: banking-system-${{ github.ref_name }}
+          path: |
+            build/banking-console.jar
+            build/banking-api.jar
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/banking-console.jar
+            build/banking-api.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

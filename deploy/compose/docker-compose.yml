@@ -1,0 +1,65 @@
+version: '3.9'
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: banking
+      MYSQL_USER: bank_user
+      MYSQL_PASSWORD: ChangeMe123!
+      MYSQL_ROOT_PASSWORD: ChangeRoot123!
+      TZ: UTC
+    command: ["mysqld", "--default-authentication-plugin=mysql_native_password"]
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  console:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.console
+    profiles: [ops]
+    stdin_open: true
+    tty: true
+    environment:
+      TZ: UTC
+      BANKING_STORAGE_MODE: jdbc
+      BANKING_JDBC_URL: jdbc:mysql://mysql:3306/banking?useSSL=false&serverTimezone=UTC
+      BANKING_DB_USER: bank_user
+      BANKING_DB_PASSWORD: ChangeMe123!
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    environment:
+      TZ: UTC
+      BANKING_STORAGE_MODE: jdbc
+      BANKING_JDBC_URL: jdbc:mysql://mysql:3306/banking?useSSL=false&serverTimezone=UTC
+      BANKING_DB_USER: bank_user
+      BANKING_DB_PASSWORD: ChangeMe123!
+      BANKING_API_KEY: compose-dev-key
+      BANKING_API_PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mysql-data: {}

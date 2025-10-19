@@ -10,6 +10,12 @@ public class TransferTransaction extends BaseTransaction {
         this.targetAccountNumber = targetAccountNumber;
     }
 
+    public TransferTransaction(double amount, int targetAccountNumber, java.time.LocalDateTime timestamp,
+            String transactionId) {
+        super(amount, timestamp, transactionId);
+        this.targetAccountNumber = targetAccountNumber;
+    }
+
     public int getTargetAccountNumber() {
         return targetAccountNumber;
     }

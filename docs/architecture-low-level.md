@@ -118,14 +118,14 @@ classDiagram
 ```
 
 ## Execution Flow Details
-1. `BankingApplication` boots by calling `BankDAO.loadBank()`. If the serialized file is absent, a new `Bank` is constructed and passed into `ConsoleUI`.
+1. `BankingApplication` boots by calling `BankDAO.loadBank()`. `BankRepositoryFactory` resolves a repository implementation (MySQL via JDBC in production, snapshots for local testing) and hydrates the aggregate or creates a fresh `Bank` when no persisted state exists.
 2. When the operator selects an action, `ConsoleUI` delegates to service methods such as `Bank.deposit`, `Bank.withdraw`, or `Bank.transfer`, which handle validation and wrap the appropriate `AccountOperation`.
 3. The service layer enqueues the operation via `queueOperation`, and `executePendingOperations()` submits work to the `ExecutorService`. Operations mutate account state in a thread-safe manner and append concrete `BaseTransaction` entries.
 4. Accounts broadcast the resulting transaction through the observer list. `ConsoleNotifier` prints feedback; `TransactionLogger` writes audit lines.
-5. On exit, `ConsoleUI` invokes `bank.shutdown()` to await outstanding futures before `BankDAO.saveBank(bank)` updates `banking_system.ser` with the latest serialized snapshot.
+5. On exit, `ConsoleUI` invokes `bank.shutdown()` to await outstanding futures before `BankDAO.saveBank(bank)` streams the latest snapshot into the configured repository (MySQL tables in production, the filesystem snapshot when explicitly configured for local development).
 
 ## Extension Points
 - **New account type:** Implement a subclass of `Account` and update `AccountFactory` to instantiate it.
 - **Additional operations:** Add a new `AccountOperation` implementation and expose it in `ConsoleUI`.
-- **Alternative persistence:** Replace `BankDAO` with a repository using JDBC or an ORM; the `Bank` contract stays unchanged.
+- **Alternative persistence:** Swap the repository selection in `BankRepositoryFactory` if the deployment needs a different datastore (e.g., Postgres or a managed document database) while keeping the `Bank` contract unchanged.
 - **New observers:** Implement `AccountObserver` (see `ConsoleNotifier`) to tap into the event stream without touching business logic.
