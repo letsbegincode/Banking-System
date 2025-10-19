@@ -1,0 +1,9 @@
+# Build outputs
+*.class
+*.ser
+transaction_log.txt
+
+# IDE artifacts
+.idea/
+*.iml
+.vscode/
