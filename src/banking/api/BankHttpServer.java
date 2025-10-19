@@ -34,7 +34,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * Hardened HTTP facade exposing banking capabilities for automation and integration tests.
+ * Hardened HTTP facade exposing banking capabilities for automation and
+ * integration tests.
  */
 public final class BankHttpServer {
     private static final Duration OPERATION_TIMEOUT = Duration.ofSeconds(10);
@@ -49,6 +50,19 @@ public final class BankHttpServer {
     private Instant bootInstant;
 
     public BankHttpServer(Bank bank, int port) {
+        this(bank,
+                port,
+                new AnalyticsReportService(bank,
+                        new TrendAnalyticsService(),
+                        new AnomalyDetectionService(),
+                        new RangeAnalyticsService()),
+                new ReportFormatter());
+    }
+
+    public BankHttpServer(Bank bank,
+            int port,
+            AnalyticsReportService analyticsReportService,
+            ReportFormatter reportFormatter) {
         this.bank = Objects.requireNonNull(bank, "bank");
         this.requestedPort = port;
         this.expectedApiKey = Optional.ofNullable(System.getenv("BANKING_API_KEY"))

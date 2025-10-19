@@ -3,6 +3,11 @@ package banking.ui;
 import banking.persistence.BankDAO;
 import banking.report.AccountAnalyticsService;
 import banking.report.StatementGenerator;
+import banking.report.analytics.AnalyticsReportService;
+import banking.report.analytics.AnomalyDetectionService;
+import banking.report.analytics.RangeAnalyticsService;
+import banking.report.analytics.TrendAnalyticsService;
+import banking.report.format.ReportFormatter;
 import banking.service.Bank;
 import banking.ui.console.ConsoleIO;
 import banking.ui.flow.AccountCreationFlow;
@@ -35,10 +40,28 @@ public class ConsoleUI {
         this.accountManagementFlow = new AccountManagementFlow(bank, io, accountPresenter);
         StatementGenerator statementGenerator = new StatementGenerator();
         StatementPresenter statementPresenter = new StatementPresenter(io, transactionPresenter);
+<<<<<<< HEAD
         AccountAnalyticsService analyticsService = new AccountAnalyticsService();
         AnalyticsPresenter analyticsPresenter = new AnalyticsPresenter(io);
         this.reportFlow = new ReportFlow(bank, io, accountPresenter, statementGenerator, statementPresenter,
                 analyticsService, analyticsPresenter);
+=======
+        TrendAnalyticsService trendAnalyticsService = new TrendAnalyticsService();
+        AnomalyDetectionService anomalyDetectionService = new AnomalyDetectionService();
+        RangeAnalyticsService rangeAnalyticsService = new RangeAnalyticsService();
+        AnalyticsReportService analyticsReportService = new AnalyticsReportService(bank,
+                trendAnalyticsService,
+                anomalyDetectionService,
+                rangeAnalyticsService);
+        ReportFormatter reportFormatter = new ReportFormatter();
+        this.reportFlow = new ReportFlow(bank,
+                io,
+                accountPresenter,
+                statementGenerator,
+                statementPresenter,
+                analyticsReportService,
+                reportFormatter);
+>>>>>>> origin/pr/18
     }
 
     public void start() {

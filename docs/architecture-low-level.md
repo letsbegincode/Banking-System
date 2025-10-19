@@ -138,6 +138,13 @@ classDiagram
   - `BankHttpServer` exposes `/reports/analytics.json` and `/reports/analytics.csv` endpoints. Optional query parameters `start`, `end`, `threshold`, and `window` map to `AnalyticsReportRequest` fields.
 - Aggregation defaults: if callers omit the time window the system evaluates the previous 30 days of activity, smoothing daily trends with a 7-day rolling average and flagging transactions ≥ 5000 monetary units.
 
+## Reporting & Analytics Enhancements
+- **Analytics Pipeline:** `TrendAnalyticsService`, `AnomalyDetectionService`, and `RangeAnalyticsService` (see `banking/report/analytics`) compute KPI-centric views over transaction history. They share an `AnalyticsRange` value object to guarantee consistent date validation.
+- **Async Workloads:** `AnalyticsReportService` queues long-running analytics jobs through `Bank.submitAnalyticsTask`, reusing the existing executor and observer notifications so report generation does not block foreground operations.
+- **Formatting Layer:** `ReportFormatter` (`banking/report/format`) renders analytics outputs as JSON or CSV, ensuring CLI and HTTP clients can choose the representation that best fits downstream tooling.
+- **Operator Access:** `ReportFlow` now offers trend, anomaly, and KPI range reports, prompting for date windows and output formats while streaming CSV/JSON back to the console.
+- **API Exposure:** `BankHttpServer` exposes `/reports/trends`, `/reports/anomalies`, and `/reports/range` endpoints. Each accepts `start`, `end`, optional tuning parameters, and a `format` selector to return the chosen representation.
+
 ## Extension Points
 - **New account type:** Implement a subclass of `Account` and update `AccountFactory` to instantiate it.
 - **Additional operations:** Add a new `AccountOperation` implementation and expose it in `ConsoleUI`.

@@ -42,6 +42,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.Locale;
 
@@ -54,6 +55,7 @@ public class Bank implements Serializable {
     private transient Queue<QueuedOperation> operationQueue;
     private transient ExecutorService executorService;
     private transient List<CompletableFuture<OperationResult>> pendingOperations;
+    private transient List<CompletableFuture<?>> backgroundTasks;
 
     public Bank() {
         this(new HashMap<>());
@@ -269,6 +271,25 @@ public class Bank implements Serializable {
         return future;
     }
 
+    public <T> CompletableFuture<T> submitAnalyticsTask(Supplier<T> task, String description) {
+        Objects.requireNonNull(task, "task");
+        Objects.requireNonNull(description, "description");
+
+        CompletableFuture<T> future = new CompletableFuture<>();
+        synchronized (this) {
+            backgroundTasks.add(future);
+            try {
+                executorService.submit(() -> runAnalyticsTask(task, description, future));
+            } catch (RejectedExecutionException e) {
+                backgroundTasks.remove(future);
+                notifyObservers("FAILED: " + description + " rejected during shutdown");
+                future.completeExceptionally(new IllegalStateException(
+                        "Analytics task rejected during shutdown: " + description, e));
+            }
+        }
+        return future;
+    }
+
     public synchronized void executePendingOperations() {
         while (!operationQueue.isEmpty()) {
             QueuedOperation queued = operationQueue.poll();
@@ -342,6 +363,19 @@ public class Bank implements Serializable {
         }
     }
 
+    private <T> void runAnalyticsTask(Supplier<T> task, String description, CompletableFuture<T> future) {
+        try {
+            T result = task.get();
+            notifyObservers("SUCCESS: " + description);
+            future.complete(result);
+        } catch (Exception e) {
+            notifyObservers("FAILED: " + description + " -> " + e.getMessage());
+            future.completeExceptionally(e);
+        } finally {
+            backgroundTasks.remove(future);
+        }
+    }
+
     private void notifyObservers(String message) {
         for (AccountObserver observer : observers) {
             try {
@@ -363,6 +397,7 @@ public class Bank implements Serializable {
         this.operationQueue = new ConcurrentLinkedQueue<>();
         this.executorService = Executors.newFixedThreadPool(5);
         this.pendingOperations = new CopyOnWriteArrayList<>();
+        this.backgroundTasks = new CopyOnWriteArrayList<>();
 
         addObserver(new ConsoleNotifier());
         addObserver(new TransactionLogger());
@@ -375,15 +410,25 @@ public class Bank implements Serializable {
 
     public void awaitPendingOperations() {
         while (true) {
-            CompletableFuture<?>[] futures;
+            CompletableFuture<?>[] operationFutures;
+            CompletableFuture<?>[] analyticsFutures;
             synchronized (this) {
                 executePendingOperations();
-                if (pendingOperations.isEmpty()) {
+                if (pendingOperations.isEmpty() && backgroundTasks.isEmpty()) {
                     return;
                 }
-                futures = pendingOperations.toArray(new CompletableFuture[0]);
+                operationFutures = pendingOperations.toArray(new CompletableFuture[0]);
+                analyticsFutures = backgroundTasks.toArray(new CompletableFuture[0]);
             }
-            CompletableFuture.allOf(futures).join();
+            CompletableFuture<?>[] all = new CompletableFuture[operationFutures.length + analyticsFutures.length];
+            int index = 0;
+            for (CompletableFuture<?> future : operationFutures) {
+                all[index++] = future;
+            }
+            for (CompletableFuture<?> future : analyticsFutures) {
+                all[index++] = future;
+            }
+            CompletableFuture.allOf(all).join();
         }
     }
 
