@@ -3,15 +3,166 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
+
+// Caching abstraction to allow pluggable providers such as Redis
+interface CacheProvider {
+    Optional<Account> getAccount(int accountNumber);
+
+    Optional<Double> getBalance(int accountNumber);
+
+    void cacheAccount(Account account);
+
+    void cacheBalance(int accountNumber, double balance);
+
+    void evictAccount(int accountNumber);
+
+    default void clear() {
+        // Default implementation does nothing.
+    }
+}
+
+// Simple in-memory cache provider used as the default implementation
+class InMemoryCacheProvider implements CacheProvider, Serializable {
+    private static final long serialVersionUID = 1L;
+
+    private final Map<Integer, Account> accountCache;
+    private final Map<Integer, Double> balanceCache;
+
+    public InMemoryCacheProvider() {
+        this.accountCache = new ConcurrentHashMap<>();
+        this.balanceCache = new ConcurrentHashMap<>();
+    }
+
+    @Override
+    public Optional<Account> getAccount(int accountNumber) {
+        return Optional.ofNullable(accountCache.get(accountNumber));
+    }
+
+    @Override
+    public Optional<Double> getBalance(int accountNumber) {
+        return Optional.ofNullable(balanceCache.get(accountNumber));
+    }
+
+    @Override
+    public void cacheAccount(Account account) {
+        accountCache.put(account.getAccountNumber(), account);
+    }
+
+    @Override
+    public void cacheBalance(int accountNumber, double balance) {
+        balanceCache.put(accountNumber, balance);
+    }
+
+    @Override
+    public void evictAccount(int accountNumber) {
+        accountCache.remove(accountNumber);
+        balanceCache.remove(accountNumber);
+    }
+
+    @Override
+    public void clear() {
+        accountCache.clear();
+        balanceCache.clear();
+    }
+}
+
+// Skeleton Redis provider illustrating how a real Redis-backed cache could be wired in.
+// A production-ready version would delegate to a Redis client such as Jedis or Lettuce.
+class RedisCacheProvider implements CacheProvider {
+    private final transient Object redisClient;
+
+    public RedisCacheProvider(Object redisClient) {
+        this.redisClient = redisClient;
+    }
+
+    @Override
+    public Optional<Account> getAccount(int accountNumber) {
+        throw new UnsupportedOperationException("Redis integration requires an actual Redis client library.");
+    }
+
+    @Override
+    public Optional<Double> getBalance(int accountNumber) {
+        throw new UnsupportedOperationException("Redis integration requires an actual Redis client library.");
+    }
+
+    @Override
+    public void cacheAccount(Account account) {
+        throw new UnsupportedOperationException("Redis integration requires an actual Redis client library.");
+    }
+
+    @Override
+    public void cacheBalance(int accountNumber, double balance) {
+        throw new UnsupportedOperationException("Redis integration requires an actual Redis client library.");
+    }
+
+    @Override
+    public void evictAccount(int accountNumber) {
+        throw new UnsupportedOperationException("Redis integration requires an actual Redis client library.");
+    }
+}
+
+// Message broker abstraction to allow asynchronous transaction processing
+interface MessageBroker extends Serializable {
+    void publish(TransactionMessage message);
+
+    void shutdown();
+}
+
+class TransactionMessage implements Serializable {
+    private static final long serialVersionUID = 1L;
+
+    private final AccountOperation operation;
+    private final Consumer<Boolean> callback;
+
+    public TransactionMessage(AccountOperation operation, Consumer<Boolean> callback) {
+        this.operation = operation;
+        this.callback = callback;
+    }
+
+    public AccountOperation getOperation() {
+        return operation;
+    }
+
+    public void complete(boolean result) {
+        if (callback != null) {
+            callback.accept(result);
+        }
+    }
+}
+
+class InMemoryMessageBroker implements MessageBroker {
+    private static final long serialVersionUID = 1L;
+
+    private final transient ExecutorService executorService;
+
+    public InMemoryMessageBroker() {
+        this.executorService = Executors.newFixedThreadPool(4);
+    }
+
+    @Override
+    public void publish(TransactionMessage message) {
+        executorService.submit(() -> {
+            boolean result = message.getOperation().execute();
+            message.complete(result);
+        });
+    }
+
+    @Override
+    public void shutdown() {
+        executorService.shutdown();
+    }
+}
 
 // Interface for account operations - improving OOP design with interfaces
 interface AccountOperation {
     boolean execute();
     String getDescription();
+    Collection<Account> getInvolvedAccounts();
 }
 
 // Base Transaction class
@@ -432,6 +583,11 @@ class DepositOperation implements AccountOperation {
     public String getDescription() {
         return "Deposit of " + amount + " to account " + account.getAccountNumber();
     }
+
+    @Override
+    public Collection<Account> getInvolvedAccounts() {
+        return Collections.singletonList(account);
+    }
 }
 
 class WithdrawOperation implements AccountOperation {
@@ -456,6 +612,11 @@ class WithdrawOperation implements AccountOperation {
     @Override
     public String getDescription() {
         return "Withdrawal of " + amount + " from account " + account.getAccountNumber();
+    }
+
+    @Override
+    public Collection<Account> getInvolvedAccounts() {
+        return Collections.singletonList(account);
     }
 }
 
@@ -482,8 +643,13 @@ class TransferOperation implements AccountOperation {
     
     @Override
     public String getDescription() {
-        return "Transfer of " + amount + " from account " + sourceAccount.getAccountNumber() + 
+        return "Transfer of " + amount + " from account " + sourceAccount.getAccountNumber() +
                " to account " + targetAccount.getAccountNumber();
+    }
+
+    @Override
+    public Collection<Account> getInvolvedAccounts() {
+        return Arrays.asList(sourceAccount, targetAccount);
     }
 }
 
@@ -491,112 +657,158 @@ class TransferOperation implements AccountOperation {
 class Bank implements Serializable {
     private static final long serialVersionUID = 1L;
     private static final SecureRandom secureRandom = new SecureRandom();
-    
+
     private final Map<Integer, Account> accounts;
     private final List<AccountObserver> observers;
-    private final Queue<AccountOperation> operationQueue;
-    private final ExecutorService executorService;
-    
+    private transient CacheProvider cacheProvider;
+    private transient MessageBroker messageBroker;
+
     public Bank() {
+        this(new InMemoryCacheProvider(), new InMemoryMessageBroker());
+    }
+
+    public Bank(CacheProvider cacheProvider, MessageBroker messageBroker) {
         this.accounts = new HashMap<>();
         this.observers = new ArrayList<>();
-        this.operationQueue = new LinkedList<>();
-        this.executorService = Executors.newFixedThreadPool(5);
-        
+        initializeInfrastructure(cacheProvider, messageBroker);
+
         // Add default observers
         addObserver(new ConsoleNotifier());
         addObserver(new TransactionLogger());
     }
-    
+
+    private void initializeInfrastructure(CacheProvider cacheProvider, MessageBroker messageBroker) {
+        this.cacheProvider = cacheProvider != null ? cacheProvider : new InMemoryCacheProvider();
+        this.messageBroker = messageBroker != null ? messageBroker : new InMemoryMessageBroker();
+        accounts.values().forEach(this::refreshAccountCache);
+    }
+
+    private void refreshAccountCache(Account account) {
+        if (account != null) {
+            cacheProvider.cacheAccount(account);
+            cacheProvider.cacheBalance(account.getAccountNumber(), account.getBalance());
+        }
+    }
+
     public void addObserver(AccountObserver observer) {
         observers.add(observer);
     }
-    
+
     private void notifyObservers(String message) {
         for (AccountObserver observer : observers) {
             observer.update(message);
         }
     }
-    
+
     public Account createAccount(String userName, String accountType, double initialDeposit) {
         int accountNumber = generateAccountNumber();
         Account account = AccountFactory.createAccount(accountType, userName, accountNumber, initialDeposit);
         accounts.put(accountNumber, account);
-        
-        notifyObservers("New " + account.getAccountType() + " account created for " + userName + 
+        refreshAccountCache(account);
+
+        notifyObservers("New " + account.getAccountType() + " account created for " + userName +
                 ", Account#: " + accountNumber);
         return account;
     }
-    
+
     public boolean closeAccount(int accountNumber) {
         Account account = accounts.remove(accountNumber);
         if (account != null) {
+            cacheProvider.evictAccount(accountNumber);
             notifyObservers("Account closed: " + account.getAccountNumber() + " for " + account.getUserName());
             return true;
         }
         return false;
     }
-    
+
     public Account getAccount(int accountNumber) {
-        return accounts.get(accountNumber);
+        Optional<Account> cachedAccount = cacheProvider.getAccount(accountNumber);
+        if (cachedAccount.isPresent()) {
+            return cachedAccount.get();
+        }
+
+        Account account = accounts.get(accountNumber);
+        refreshAccountCache(account);
+        return account;
     }
-    
+
+    public double getAccountBalance(int accountNumber) {
+        Optional<Double> cachedBalance = cacheProvider.getBalance(accountNumber);
+        if (cachedBalance.isPresent()) {
+            return cachedBalance.get();
+        }
+
+        Account account = accounts.get(accountNumber);
+        if (account == null) {
+            throw new NoSuchElementException("Account not found: " + accountNumber);
+        }
+
+        double balance = account.getBalance();
+        cacheProvider.cacheBalance(accountNumber, balance);
+        return balance;
+    }
+
     public List<Account> getAllAccounts() {
+        accounts.values().forEach(this::refreshAccountCache);
         return new ArrayList<>(accounts.values());
     }
-    
+
     public List<Account> getAccountsByType(String accountType) {
         return accounts.values().stream()
                 .filter(a -> a.getAccountType().toLowerCase().contains(accountType.toLowerCase()))
+                .peek(this::refreshAccountCache)
                 .collect(Collectors.toList());
     }
-    
+
     public List<Account> searchAccounts(String keyword) {
         String lowercaseKeyword = keyword.toLowerCase();
         return accounts.values().stream()
                 .filter(a -> a.getUserName().toLowerCase().contains(lowercaseKeyword))
+                .peek(this::refreshAccountCache)
                 .collect(Collectors.toList());
     }
-    
+
     public void queueOperation(AccountOperation operation) {
-        operationQueue.add(operation);
-        executePendingOperations();
+        messageBroker.publish(new TransactionMessage(operation, result -> {
+            if (result) {
+                operation.getInvolvedAccounts().forEach(this::refreshAccountCache);
+                notifyObservers("Operation completed: " + operation.getDescription());
+            } else {
+                notifyObservers("Operation failed: " + operation.getDescription());
+            }
+        }));
     }
-    
-    public void executePendingOperations() {
-        List<Future<Boolean>> futures = new ArrayList<>();
-        
-        while (!operationQueue.isEmpty()) {
-            AccountOperation operation = operationQueue.poll();
-            futures.add(executorService.submit(() -> {
-                boolean result = operation.execute();
-                if (result) {
-                    notifyObservers("Operation completed: " + operation.getDescription());
-                } else {
-                    notifyObservers("Operation failed: " + operation.getDescription());
-                }
-                return result;
-            }));
+
+    public void shutdown() {
+        if (messageBroker != null) {
+            messageBroker.shutdown();
+        }
+        if (cacheProvider != null) {
+            cacheProvider.clear();
         }
     }
-    
-    public void shutdown() {
-        executorService.shutdown();
-    }
-    
+
     public void addInterestToAllSavingsAccounts() {
         accounts.values().stream()
                 .filter(a -> a instanceof SavingsAccount || a instanceof FixedDepositAccount)
-                .forEach(Account::addInterest);
+                .forEach(account -> {
+                    account.addInterest();
+                    refreshAccountCache(account);
+                });
         notifyObservers("Monthly interest added to all eligible accounts");
     }
-    
+
     private int generateAccountNumber() {
         int accountNumber;
         do {
             accountNumber = 100000 + secureRandom.nextInt(900000);
         } while (accounts.containsKey(accountNumber));
         return accountNumber;
+    }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        in.defaultReadObject();
+        initializeInfrastructure(new InMemoryCacheProvider(), new InMemoryMessageBroker());
     }
 }
 
@@ -972,7 +1184,8 @@ class ConsoleUI {
         System.out.println("\n" + ANSI_BOLD + "Summary:" + ANSI_RESET);
         System.out.println(ANSI_GREEN + "Total Credits: " + String.format("%.2f", totalDeposits) + ANSI_RESET);
         System.out.println(ANSI_RED + "Total Debits: " + String.format("%.2f", totalWithdrawals) + ANSI_RESET);
-        System.out.println(ANSI_BOLD + "Current Balance: " + String.format("%.2f", account.getBalance()) + ANSI_RESET);
+        double currentBalance = bank.getAccountBalance(account.getAccountNumber());
+        System.out.println(ANSI_BOLD + "Current Balance: " + String.format("%.2f", currentBalance) + ANSI_RESET);
     }
     
     private void displayAllAccounts() {
@@ -991,11 +1204,12 @@ class ConsoleUI {
                            ANSI_RESET);
         
         for (Account account : allAccounts) {
-            System.out.println(String.format("%-6d %-20s %-15s %-15.2f %-15s", 
+            double balance = bank.getAccountBalance(account.getAccountNumber());
+            System.out.println(String.format("%-6d %-20s %-15s %-15.2f %-15s",
                                             account.getAccountNumber(),
                                             account.getUserName(),
                                             account.getAccountType(),
-                                            account.getBalance(),
+                                            balance,
                                             account.creationDate));
         }
     }
@@ -1035,11 +1249,12 @@ class ConsoleUI {
                            ANSI_RESET);
         
         for (Account account : results) {
-            System.out.println(String.format("%-6d %-20s %-15s %-15.2f %-15s", 
+            double balance = bank.getAccountBalance(account.getAccountNumber());
+            System.out.println(String.format("%-6d %-20s %-15s %-15.2f %-15s",
                                             account.getAccountNumber(),
                                             account.getUserName(),
                                             account.getAccountType(),
-                                            account.getBalance(),
+                                            balance,
                                             account.creationDate));
         }
     }
@@ -1085,6 +1300,7 @@ class ConsoleUI {
         double totalBalance = 0;
         
         for (Account account : allAccounts) {
+            double balance = bank.getAccountBalance(account.getAccountNumber());
             if (account.getAccountType().toLowerCase().contains("savings")) {
                 savingsAccounts++;
             } else if (account.getAccountType().toLowerCase().contains("current")) {
@@ -1092,8 +1308,8 @@ class ConsoleUI {
             } else if (account.getAccountType().toLowerCase().contains("fixed")) {
                 fixedDepositAccounts++;
             }
-            
-            totalBalance += account.getBalance();
+
+            totalBalance += balance;
         }
         
         System.out.println(ANSI_CYAN + ANSI_BOLD + "\n===== ACCOUNT SUMMARY REPORT =====" + ANSI_RESET);
@@ -1108,30 +1324,41 @@ class ConsoleUI {
     private void generateHighValueAccountsReport() {
         double threshold = getDoubleInput("Enter balance threshold for high-value accounts: ");
         
-        List<Account> highValueAccounts = bank.getAllAccounts().stream()
-                .filter(a -> a.getBalance() >= threshold)
-                .sorted((a1, a2) -> Double.compare(a2.getBalance(), a1.getBalance()))
-                .collect(Collectors.toList());
-        
+        Map<Integer, Double> balances = new HashMap<>();
+        List<Account> highValueAccounts = new ArrayList<>();
+
+        for (Account account : bank.getAllAccounts()) {
+            double balance = bank.getAccountBalance(account.getAccountNumber());
+            balances.put(account.getAccountNumber(), balance);
+            if (balance >= threshold) {
+                highValueAccounts.add(account);
+            }
+        }
+
         if (highValueAccounts.isEmpty()) {
             System.out.println(ANSI_YELLOW + "No accounts found with balance >= " + threshold + ANSI_RESET);
             return;
         }
-        
+
+        highValueAccounts.sort((a1, a2) -> Double.compare(
+                balances.get(a2.getAccountNumber()),
+                balances.get(a1.getAccountNumber())));
+
         System.out.println(ANSI_CYAN + ANSI_BOLD + "\n===== HIGH-VALUE ACCOUNTS REPORT =====" + ANSI_RESET);
         System.out.println(ANSI_BOLD + "Accounts with balance >= " + threshold + ": " + highValueAccounts.size() + ANSI_RESET);
-        
-        System.out.println(ANSI_CYAN + 
-                           String.format("%-6s %-20s %-15s %-15s %-15s", 
+
+        System.out.println(ANSI_CYAN +
+                           String.format("%-6s %-20s %-15s %-15s %-15s",
                                          "ACC#", "NAME", "TYPE", "BALANCE", "CREATED") + 
                            ANSI_RESET);
         
         for (Account account : highValueAccounts) {
-            System.out.println(String.format("%-6d %-20s %-15s %-15.2f %-15s", 
+            double balance = balances.get(account.getAccountNumber());
+            System.out.println(String.format("%-6d %-20s %-15s %-15.2f %-15s",
                                             account.getAccountNumber(),
                                             account.getUserName(),
                                             account.getAccountType(),
-                                            account.getBalance(),
+                                            balance,
                                             account.creationDate));
         }
     }
@@ -1241,7 +1468,8 @@ class ConsoleUI {
         System.out.println(ANSI_BOLD + "Account Number: " + ANSI_RESET + account.getAccountNumber());
         System.out.println(ANSI_BOLD + "Account Holder: " + ANSI_RESET + account.getUserName());
         System.out.println(ANSI_BOLD + "Account Type: " + ANSI_RESET + account.getAccountType());
-        System.out.println(ANSI_BOLD + "Balance: " + ANSI_RESET + String.format("%.2f", account.getBalance()));
+        double balance = bank.getAccountBalance(account.getAccountNumber());
+        System.out.println(ANSI_BOLD + "Balance: " + ANSI_RESET + String.format("%.2f", balance));
         System.out.println(ANSI_BOLD + "Creation Date: " + ANSI_RESET + account.creationDate);
         
         // Display type-specific details
