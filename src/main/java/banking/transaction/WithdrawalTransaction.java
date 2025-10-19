@@ -1,5 +1,7 @@
 package banking.transaction;
 
+import java.time.LocalDateTime;
+
 public class WithdrawalTransaction extends BaseTransaction {
     private static final long serialVersionUID = 1L;
 
@@ -9,6 +11,9 @@ public class WithdrawalTransaction extends BaseTransaction {
 
     public WithdrawalTransaction(double amount, java.time.LocalDateTime timestamp, String transactionId) {
         super(amount, timestamp, transactionId);
+
+    public WithdrawalTransaction(double amount, String transactionId, LocalDateTime timestamp) {
+        super(amount, transactionId, timestamp);
     }
 
     @Override

@@ -15,7 +15,17 @@ public abstract class BaseTransaction implements Serializable {
     private final String transactionId;
 
     protected BaseTransaction(double amount) {
+<<<<<<< HEAD:src/main/java/banking/transaction/BaseTransaction.java
         this(amount, LocalDateTime.now(), generateTransactionId());
+=======
+        this(amount, null, null);
+    }
+
+    protected BaseTransaction(double amount, String transactionId, LocalDateTime timestamp) {
+        this.amount = amount;
+        this.timestamp = timestamp == null ? LocalDateTime.now() : timestamp;
+        this.transactionId = transactionId == null ? generateTransactionId() : transactionId;
+>>>>>>> origin/pr/14:src/banking/transaction/BaseTransaction.java
     }
 
     protected BaseTransaction(double amount, LocalDateTime timestamp, String transactionId) {

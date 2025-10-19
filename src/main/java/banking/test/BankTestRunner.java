@@ -36,6 +36,7 @@ import java.util.Map;
 public final class BankTestRunner {
     private int passed;
     private int failed;
+    private final DatabaseTestHarness databaseHarness = DatabaseTestHarness.initialize();
 
     public static void main(String[] args) {
         BankTestRunner runner = new BankTestRunner();
@@ -77,7 +78,11 @@ public final class BankTestRunner {
     }
 
     private void shouldDepositFunds() {
+<<<<<<< HEAD:src/main/java/banking/test/BankTestRunner.java
         Bank bank = new Bank(new InMemoryAccountRepository());
+=======
+        Bank bank = newBank();
+>>>>>>> origin/pr/14:src/banking/test/BankTestRunner.java
         try {
             Account account = bank.createAccount("Alice", "savings", 0);
             CompletableFuture<?> future = bank.deposit(account.getAccountNumber(), 200.0);
@@ -92,7 +97,11 @@ public final class BankTestRunner {
     }
 
     private void shouldWithdrawFunds() {
+<<<<<<< HEAD:src/main/java/banking/test/BankTestRunner.java
         Bank bank = new Bank(new InMemoryAccountRepository());
+=======
+        Bank bank = newBank();
+>>>>>>> origin/pr/14:src/banking/test/BankTestRunner.java
         try {
             Account account = bank.createAccount("Bob", "savings", 0);
             bank.deposit(account.getAccountNumber(), 2000.0).join();
@@ -107,7 +116,11 @@ public final class BankTestRunner {
     }
 
     private void shouldTransferFunds() {
+<<<<<<< HEAD:src/main/java/banking/test/BankTestRunner.java
         Bank bank = new Bank(new InMemoryAccountRepository());
+=======
+        Bank bank = newBank();
+>>>>>>> origin/pr/14:src/banking/test/BankTestRunner.java
         try {
             Account source = bank.createAccount("Charlie", "current", 0);
             Account target = bank.createAccount("Dana", "savings", 0);
@@ -127,7 +140,11 @@ public final class BankTestRunner {
     }
 
     private void shouldApplyInterest() {
+<<<<<<< HEAD:src/main/java/banking/test/BankTestRunner.java
         Bank bank = new Bank(new InMemoryAccountRepository());
+=======
+        Bank bank = newBank();
+>>>>>>> origin/pr/14:src/banking/test/BankTestRunner.java
         try {
             Account savings = bank.createAccount("Eve", "savings", 0);
             bank.deposit(savings.getAccountNumber(), 1200.0).join();
@@ -143,7 +160,11 @@ public final class BankTestRunner {
     }
 
     private void shouldGenerateStatement() {
+<<<<<<< HEAD:src/main/java/banking/test/BankTestRunner.java
         Bank bank = new Bank(new InMemoryAccountRepository());
+=======
+        Bank bank = newBank();
+>>>>>>> origin/pr/14:src/banking/test/BankTestRunner.java
         try {
             Account account = bank.createAccount("Frank", "current", 0);
             bank.deposit(account.getAccountNumber(), 500.0).join();
@@ -169,7 +190,7 @@ public final class BankTestRunner {
     }
 
     private void shouldServeHttpApi() {
-        Bank bank = new Bank();
+        Bank bank = newBank();
         BankHttpServer server = new BankHttpServer(bank, 0);
         try {
             server.start();
@@ -349,8 +370,16 @@ public final class BankTestRunner {
         }
     }
 
+<<<<<<< HEAD:src/main/java/banking/test/BankTestRunner.java
     private record AuthFixture(AuthService service, String operatorUser, String operatorPassword,
             String customerUser, String customerPassword) {
+=======
+    private Bank newBank() {
+        if (databaseHarness != null) {
+            return databaseHarness.createBank();
+        }
+        return new Bank();
+>>>>>>> origin/pr/14:src/banking/test/BankTestRunner.java
     }
 
     private record HttpResponse(int statusCode, String body) {
