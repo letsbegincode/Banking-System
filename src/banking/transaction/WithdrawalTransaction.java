@@ -7,6 +7,10 @@ public class WithdrawalTransaction extends BaseTransaction {
         super(amount);
     }
 
+    public WithdrawalTransaction(double amount, java.time.LocalDateTime timestamp, String transactionId) {
+        super(amount, timestamp, transactionId);
+    }
+
     @Override
     public String getType() {
         return "Withdrawal";

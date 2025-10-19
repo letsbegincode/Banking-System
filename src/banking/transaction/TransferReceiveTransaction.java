@@ -10,6 +10,16 @@ public class TransferReceiveTransaction extends BaseTransaction {
         this.sourceAccountNumber = sourceAccountNumber;
     }
 
+    public TransferReceiveTransaction(double amount, int sourceAccountNumber, java.time.LocalDateTime timestamp,
+            String transactionId) {
+        super(amount, timestamp, transactionId);
+        this.sourceAccountNumber = sourceAccountNumber;
+    }
+
+    public int getSourceAccountNumber() {
+        return sourceAccountNumber;
+    }
+
     @Override
     public String getType() {
         return "Received from Acc#" + sourceAccountNumber;

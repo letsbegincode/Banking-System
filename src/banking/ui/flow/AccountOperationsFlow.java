@@ -2,6 +2,7 @@ package banking.ui.flow;
 
 import banking.account.Account;
 import banking.operation.OperationResult;
+import banking.persistence.BankDAO;
 import banking.service.Bank;
 import banking.transaction.BaseTransaction;
 import banking.ui.console.ConsoleIO;
@@ -69,6 +70,7 @@ public class AccountOperationsFlow {
                 Account updatedAccount = bank.getAccount(account.getAccountNumber());
                 if (updatedAccount != null) {
                     accountPresenter.showAccountDetails(updatedAccount);
+                    BankDAO.saveBank(bank);
                     return updatedAccount;
                 }
                 io.warning("Account not found after operation. It may have been closed.");
@@ -112,6 +114,7 @@ public class AccountOperationsFlow {
                     io.info("Updated target account details:");
                     accountPresenter.showAccountDetails(updatedTarget);
                 }
+                BankDAO.saveBank(bank);
             } else {
                 io.error(result.getMessage());
             }

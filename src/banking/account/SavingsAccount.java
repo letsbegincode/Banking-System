@@ -1,6 +1,9 @@
 package banking.account;
 
+import banking.transaction.BaseTransaction;
 import banking.transaction.InterestTransaction;
+
+import java.util.List;
 
 public class SavingsAccount extends Account {
     private static final long serialVersionUID = 1L;
@@ -10,6 +13,12 @@ public class SavingsAccount extends Account {
 
     public SavingsAccount(String userName, int accountNumber) {
         super(userName, accountNumber);
+    }
+
+    SavingsAccount(String userName, int accountNumber, String creationDate, double balance, double minimumBalance,
+            List<BaseTransaction> transactions) {
+        super(userName, accountNumber, creationDate, balance, transactions);
+        this.minimumBalance = minimumBalance;
     }
 
     @Override

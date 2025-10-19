@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: banking-console-maintenance
+spec:
+  schedule: "0 1 * * *"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: console
+              image: ghcr.io/example/banking-console:latest
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: BANKING_STORAGE_MODE
+                  value: jdbc
+                - name: BANKING_JDBC_URL
+                  value: jdbc:mysql://banking-mysql:3306/banking?useSSL=true&requireSSL=true&serverTimezone=UTC
+                - name: BANKING_DB_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: banking-config
+                      key: BANKING_DB_USER
+                - name: BANKING_DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: banking-config
+                      key: BANKING_DB_PASSWORD
+              command: ["java", "-jar", "/opt/app/banking-console.jar"]

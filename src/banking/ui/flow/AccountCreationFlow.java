@@ -1,6 +1,7 @@
 package banking.ui.flow;
 
 import banking.account.Account;
+import banking.persistence.BankDAO;
 import banking.service.Bank;
 import banking.ui.console.ConsoleIO;
 import banking.ui.presenter.AccountPresenter;
@@ -27,6 +28,7 @@ public class AccountCreationFlow {
             Account account = bank.createAccount(userName, accountType, initialDeposit);
             io.success("Account created successfully! Account Number: " + account.getAccountNumber());
             accountPresenter.showAccountDetails(account);
+            BankDAO.saveBank(bank);
         } catch (IllegalArgumentException ex) {
             io.error("Error creating account: " + ex.getMessage());
         }

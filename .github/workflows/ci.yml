@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Compile sources
+        run: |
+          mkdir -p build/classes
+          find src -name '*.java' > sources.txt
+          javac -d build/classes @sources.txt
+
+      - name: Package console jar
+        run: |
+          jar --create --file build/banking-console.jar --main-class banking.BankingApplication -C build/classes .
+
+      - name: Package API jar
+        run: |
+          jar --create --file build/banking-api.jar --main-class banking.api.ApiApplication -C build/classes .
+
+      - name: Run migration script
+        env:
+          BANKING_DATA_PATH: ${{ github.workspace }}/tmp/data/banking_state.properties
+        run: |
+          mkdir -p tmp/data
+          bash deploy/scripts/run-migrations.sh
+
+      - name: Run persistence smoke test
+        run: java -cp build/classes banking.test.PersistenceSmokeTest
+
+      - name: Build console container image
+        run: docker build -f deploy/Dockerfile.console -t banking-console:ci .
+
+      - name: Build API container image
+        run: docker build -f deploy/Dockerfile.api -t banking-api:ci .
+
+      - name: Smoke test API container
+        env:
+          BANKING_DATA_PATH: ${{ github.workspace }}/tmp/data/banking_state.properties
+        run: |
+          mkdir -p tmp/data
+          docker run -d --rm \
+            --name banking-api-test \
+            -e BANKING_DATA_PATH=/data/banking_state.properties \
+            -p 8080:8080 \
+            -v "${GITHUB_WORKSPACE}/tmp/data:/data" \
+            banking-api:ci
+          trap 'docker logs banking-api-test; docker rm -f banking-api-test' EXIT
+          for attempt in {1..10}; do
+            if curl -fsS http://localhost:8080/healthz > /dev/null; then
+              break
+            fi
+            sleep 3
+          done
+          curl -fsS http://localhost:8080/metrics
+          curl -fsS http://localhost:8080/accounts
+          docker rm -f banking-api-test
+          trap - EXIT
+
+      - name: Post-deploy verification
+        run: |
+          test -s tmp/data/banking_state.properties || echo "No snapshot created yet"
+          echo "Verified container smoke tests"

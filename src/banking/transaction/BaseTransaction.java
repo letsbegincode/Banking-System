@@ -3,6 +3,7 @@ package banking.transaction;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Objects;
 import java.util.UUID;
 
 public abstract class BaseTransaction implements Serializable {
@@ -14,12 +15,16 @@ public abstract class BaseTransaction implements Serializable {
     private final String transactionId;
 
     protected BaseTransaction(double amount) {
-        this.amount = amount;
-        this.timestamp = LocalDateTime.now();
-        this.transactionId = generateTransactionId();
+        this(amount, LocalDateTime.now(), generateTransactionId());
     }
 
-    private String generateTransactionId() {
+    protected BaseTransaction(double amount, LocalDateTime timestamp, String transactionId) {
+        this.amount = amount;
+        this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
+        this.transactionId = Objects.requireNonNull(transactionId, "transactionId");
+    }
+
+    private static String generateTransactionId() {
         return UUID.randomUUID().toString().substring(0, 8);
     }
 

@@ -1,10 +1,12 @@
 package banking.account;
 
+import banking.transaction.BaseTransaction;
 import banking.transaction.DepositTransaction;
 import banking.transaction.InterestTransaction;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 public class FixedDepositAccount extends Account {
     private static final long serialVersionUID = 1L;
@@ -22,6 +24,13 @@ public class FixedDepositAccount extends Account {
         this.termMonths = termMonths;
         this.maturityDate = LocalDateTime.now().plusMonths(termMonths);
         recordTransaction(new DepositTransaction(initialDeposit));
+    }
+
+    FixedDepositAccount(String userName, int accountNumber, String creationDate, double balance, int termMonths,
+            LocalDateTime maturityDate, List<BaseTransaction> transactions) {
+        super(userName, accountNumber, creationDate, balance, transactions);
+        this.termMonths = termMonths;
+        this.maturityDate = maturityDate;
     }
 
     @Override
@@ -47,5 +56,9 @@ public class FixedDepositAccount extends Account {
 
     public String getFormattedMaturityDate() {
         return maturityDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+    }
+
+    public int getTermMonths() {
+        return termMonths;
     }
 }
