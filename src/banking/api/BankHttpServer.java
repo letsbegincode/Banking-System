@@ -2,6 +2,15 @@ package banking.api;
 
 import banking.account.Account;
 import banking.operation.OperationResult;
+import banking.report.analytics.AnalyticsRange;
+import banking.report.analytics.AnalyticsReportService;
+import banking.report.analytics.AnomalyReport;
+import banking.report.analytics.RangeSummary;
+import banking.report.analytics.TrendReport;
+import banking.report.analytics.AnomalyDetectionService;
+import banking.report.analytics.RangeAnalyticsService;
+import banking.report.analytics.TrendAnalyticsService;
+import banking.report.format.ReportFormatter;
 import banking.service.Bank;
 
 import com.sun.net.httpserver.Headers;
@@ -15,6 +24,8 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -30,12 +41,29 @@ import java.util.concurrent.Executors;
 public class BankHttpServer {
     private final Bank bank;
     private final int requestedPort;
+    private final AnalyticsReportService analyticsReportService;
+    private final ReportFormatter reportFormatter;
     private HttpServer server;
     private ExecutorService executorService;
 
     public BankHttpServer(Bank bank, int port) {
+        this(bank,
+                port,
+                new AnalyticsReportService(bank,
+                        new TrendAnalyticsService(),
+                        new AnomalyDetectionService(),
+                        new RangeAnalyticsService()),
+                new ReportFormatter());
+    }
+
+    public BankHttpServer(Bank bank,
+            int port,
+            AnalyticsReportService analyticsReportService,
+            ReportFormatter reportFormatter) {
         this.bank = Objects.requireNonNull(bank, "bank");
         this.requestedPort = port;
+        this.analyticsReportService = Objects.requireNonNull(analyticsReportService, "analyticsReportService");
+        this.reportFormatter = Objects.requireNonNull(reportFormatter, "reportFormatter");
     }
 
     public synchronized void start() {
@@ -53,6 +81,9 @@ public class BankHttpServer {
         server.createContext("/operations/deposit", new DepositHandler());
         server.createContext("/operations/withdraw", new WithdrawHandler());
         server.createContext("/operations/transfer", new TransferHandler());
+        server.createContext("/reports/trends", new TrendReportHandler());
+        server.createContext("/reports/anomalies", new AnomalyReportHandler());
+        server.createContext("/reports/range", new RangeSummaryHandler());
         server.setExecutor(executorService);
         server.start();
     }
@@ -137,12 +168,62 @@ public class BankHttpServer {
         }
 
         protected void respond(HttpExchange exchange, int status, String body) throws IOException {
+            respond(exchange, status, body, "application/json; charset=utf-8");
+        }
+
+        protected void respond(HttpExchange exchange, int status, String body, String contentType) throws IOException {
             byte[] responseBytes = body.getBytes(StandardCharsets.UTF_8);
             Headers headers = exchange.getResponseHeaders();
-            headers.set("Content-Type", "application/json; charset=utf-8");
+            headers.set("Content-Type", contentType);
             exchange.sendResponseHeaders(status, responseBytes.length);
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(responseBytes);
+            }
+        }
+
+        protected AnalyticsRange parseRange(Map<String, String> params) {
+            LocalDate start = parseDate(params.get("start"), "start");
+            LocalDate end = parseDate(params.get("end"), "end");
+            return new AnalyticsRange(start, end);
+        }
+
+        protected String parseFormat(Map<String, String> params) {
+            String format = params.getOrDefault("format", "json");
+            if (!"json".equalsIgnoreCase(format) && !"csv".equalsIgnoreCase(format)) {
+                throw new IllegalArgumentException("Unsupported format: " + format);
+            }
+            return format.toLowerCase(Locale.ROOT);
+        }
+
+        protected double parseDouble(Map<String, String> params, String key, double defaultValue) {
+            String value = params.get(key);
+            if (value == null || value.isBlank()) {
+                return defaultValue;
+            }
+            try {
+                return Double.parseDouble(value);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid value for '" + key + "': " + value);
+            }
+        }
+
+        private LocalDate parseDate(String raw, String name) {
+            if (raw == null || raw.isBlank()) {
+                throw new IllegalArgumentException("Missing required parameter '" + name + "'");
+            }
+            try {
+                return LocalDate.parse(raw);
+            } catch (DateTimeParseException ex) {
+                throw new IllegalArgumentException("Invalid date for '" + name + "': " + raw);
+            }
+        }
+
+        protected void respondReport(HttpExchange exchange, String format, String jsonBody, String csvBody)
+                throws IOException {
+            if ("csv".equals(format)) {
+                respond(exchange, 200, csvBody, "text/csv; charset=utf-8");
+            } else {
+                respond(exchange, 200, jsonBody, "application/json; charset=utf-8");
             }
         }
 
@@ -237,6 +318,44 @@ public class BankHttpServer {
             double amount = parseAmount(params.get("amount"));
             OperationResult result = bank.transfer(source, target, amount).join();
             respond(exchange, statusFor(result), resultJson(result));
+        }
+    }
+
+    private final class TrendReportHandler extends JsonHandler {
+        @Override
+        protected void handleInternal(HttpExchange exchange) throws Exception {
+            ensureMethod(exchange, "GET");
+            Map<String, String> params = parseParams(exchange);
+            AnalyticsRange range = parseRange(params);
+            String format = parseFormat(params);
+            TrendReport report = analyticsReportService.queueTrendReport(range).join();
+            respondReport(exchange, format, reportFormatter.toJson(report), reportFormatter.toCsv(report));
+        }
+    }
+
+    private final class AnomalyReportHandler extends JsonHandler {
+        @Override
+        protected void handleInternal(HttpExchange exchange) throws Exception {
+            ensureMethod(exchange, "GET");
+            Map<String, String> params = parseParams(exchange);
+            AnalyticsRange range = parseRange(params);
+            String format = parseFormat(params);
+            double threshold = parseDouble(params, "threshold", 0.0);
+            double deviation = parseDouble(params, "deviation", 0.0);
+            AnomalyReport report = analyticsReportService.queueAnomalyReport(range, threshold, deviation).join();
+            respondReport(exchange, format, reportFormatter.toJson(report), reportFormatter.toCsv(report));
+        }
+    }
+
+    private final class RangeSummaryHandler extends JsonHandler {
+        @Override
+        protected void handleInternal(HttpExchange exchange) throws Exception {
+            ensureMethod(exchange, "GET");
+            Map<String, String> params = parseParams(exchange);
+            AnalyticsRange range = parseRange(params);
+            String format = parseFormat(params);
+            RangeSummary summary = analyticsReportService.queueRangeSummary(range).join();
+            respondReport(exchange, format, reportFormatter.toJson(summary), reportFormatter.toCsv(summary));
         }
     }
 
