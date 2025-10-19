@@ -2,6 +2,9 @@ package banking.operation;
 
 import banking.account.Account;
 
+import java.util.Collection;
+import java.util.List;
+
 public class TransferOperation implements AccountOperation {
     private final Account sourceAccount;
     private final Account targetAccount;
@@ -40,5 +43,10 @@ public class TransferOperation implements AccountOperation {
     public String getDescription() {
         return "Transfer of " + amount + " from account " + sourceAccount.getAccountNumber()
                 + " to account " + targetAccount.getAccountNumber();
+    }
+
+    @Override
+    public Collection<Account> affectedAccounts() {
+        return List.of(sourceAccount, targetAccount);
     }
 }

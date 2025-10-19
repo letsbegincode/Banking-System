@@ -12,12 +12,17 @@ import banking.operation.DepositOperation;
 import banking.operation.OperationResult;
 import banking.operation.TransferOperation;
 import banking.operation.WithdrawOperation;
+import banking.persistence.BankRepository;
+import banking.persistence.InMemoryBankRepository;
+import banking.persistence.PersistenceStatus;
+import banking.persistence.RepositoryException;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,10 +46,26 @@ public class Bank implements Serializable {
     private transient Queue<QueuedOperation> operationQueue;
     private transient ExecutorService executorService;
     private transient List<CompletableFuture<OperationResult>> pendingOperations;
+    private transient BankRepository repository;
+    private transient PersistenceStatus activePersistenceStatus;
+    private transient PersistenceStatus primaryPersistenceStatus;
 
     public Bank() {
+        this(new InMemoryBankRepository());
+    }
+
+    public Bank(BankRepository repository) {
+        this(repository, repository.getStatus());
+    }
+
+    public Bank(BankRepository repository, PersistenceStatus primaryPersistenceStatus) {
         this.accounts = new HashMap<>();
+        this.repository = Objects.requireNonNull(repository, "repository");
+        this.primaryPersistenceStatus = Objects.requireNonNull(primaryPersistenceStatus,
+                "primaryPersistenceStatus");
+        this.activePersistenceStatus = repository.getStatus();
         initializeTransientState();
+        loadPersistedAccounts();
     }
 
     public synchronized void addObserver(AccountObserver observer) {
@@ -55,7 +76,7 @@ public class Bank implements Serializable {
         int accountNumber = generateAccountNumber();
         Account account = AccountFactory.createAccount(accountType, userName, accountNumber, initialDeposit);
         accounts.put(accountNumber, account);
-
+        persistAccount(account);
         notifyObservers("New " + account.getAccountType() + " account created for " + userName
                 + ", Account#: " + accountNumber);
         return account;
@@ -64,6 +85,7 @@ public class Bank implements Serializable {
     public synchronized boolean closeAccount(int accountNumber) {
         Account account = accounts.remove(accountNumber);
         if (account != null) {
+            deleteAccountFromPersistence(accountNumber);
             notifyObservers("Account closed: " + account.getAccountNumber() + " for " + account.getUserName());
             return true;
         }
@@ -77,6 +99,7 @@ public class Bank implements Serializable {
         }
 
         account.setUserName(newName);
+        persistAccount(account);
         notifyObservers("Account holder updated for account " + accountNumber + " to " + account.getUserName());
         return true;
     }
@@ -186,15 +209,24 @@ public class Bank implements Serializable {
                 Thread.currentThread().interrupt();
             }
         }
+        synchronized (this) {
+            closeRepositoryQuietly();
+        }
     }
 
     public synchronized int addInterestToAllSavingsAccounts() {
         int processed = 0;
+        List<Account> updatedAccounts = new ArrayList<>();
         for (Account account : accounts.values()) {
             if (account instanceof SavingsAccount || account instanceof FixedDepositAccount) {
                 account.addInterest();
+                updatedAccounts.add(account);
                 processed++;
             }
+        }
+
+        if (!updatedAccounts.isEmpty()) {
+            persistAccounts(updatedAccounts);
         }
 
         if (processed > 0) {
@@ -212,6 +244,10 @@ public class Bank implements Serializable {
             result = queued.operation().execute();
         } catch (Exception e) {
             result = OperationResult.failure("Unexpected error executing operation: " + e.getMessage());
+        }
+
+        if (result.isSuccess()) {
+            persistAccounts(queued.operation().affectedAccounts());
         }
 
         notifyObservers(result.isSuccess()
@@ -234,6 +270,71 @@ public class Bank implements Serializable {
         }
     }
 
+    private void persistAccount(Account account) {
+        if (account != null) {
+            persistAccounts(List.of(account));
+        }
+    }
+
+    private void persistAccounts(Collection<Account> accountsToPersist) {
+        if (accountsToPersist == null || accountsToPersist.isEmpty()) {
+            return;
+        }
+        BankRepository target;
+        synchronized (this) {
+            target = this.repository;
+        }
+        try {
+            target.saveAccounts(accountsToPersist);
+        } catch (RepositoryException e) {
+            handlePersistenceFailure("persist accounts", e);
+        }
+    }
+
+    private void deleteAccountFromPersistence(int accountNumber) {
+        BankRepository target;
+        synchronized (this) {
+            target = this.repository;
+        }
+        try {
+            target.deleteAccount(accountNumber);
+        } catch (RepositoryException e) {
+            handlePersistenceFailure("delete account", e);
+        }
+    }
+
+    private synchronized void handlePersistenceFailure(String action, Exception exception) {
+        System.err.println("Persistence failure during " + action + ": " + exception.getMessage());
+        PersistenceStatus failureStatus = primaryPersistenceStatus == null
+                ? PersistenceStatus.unavailable("jdbc", exception.getMessage(), exception)
+                : primaryPersistenceStatus.unavailableCopy(exception.getMessage(), exception);
+        switchToInMemory(failureStatus);
+    }
+
+    private synchronized void switchToInMemory(PersistenceStatus failureStatus) {
+        if (repository instanceof InMemoryBankRepository) {
+            this.primaryPersistenceStatus = failureStatus;
+            this.activePersistenceStatus = repository.getStatus();
+            return;
+        }
+        closeRepositoryQuietly();
+        InMemoryBankRepository fallback = new InMemoryBankRepository();
+        fallback.saveAccounts(accounts.values());
+        this.repository = fallback;
+        this.activePersistenceStatus = fallback.getStatus();
+        this.primaryPersistenceStatus = failureStatus;
+    }
+
+    private void closeRepositoryQuietly() {
+        if (repository == null) {
+            return;
+        }
+        try {
+            repository.close();
+        } catch (Exception ignored) {
+        }
+    }
+
     private void initializeTransientState() {
         this.observers = new CopyOnWriteArrayList<>();
         this.operationQueue = new ConcurrentLinkedQueue<>();
@@ -246,7 +347,29 @@ public class Bank implements Serializable {
 
     private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
         ois.defaultReadObject();
+        this.repository = new InMemoryBankRepository();
+        this.activePersistenceStatus = repository.getStatus();
+        if (this.primaryPersistenceStatus == null) {
+            this.primaryPersistenceStatus = this.activePersistenceStatus;
+        }
         initializeTransientState();
+    }
+
+    private void loadPersistedAccounts() {
+        try {
+            Map<Integer, Account> stored = repository.loadAccounts();
+            accounts.putAll(stored);
+        } catch (RepositoryException e) {
+            handlePersistenceFailure("load accounts", e);
+        }
+    }
+
+    public synchronized PersistenceStatus getPrimaryPersistenceStatus() {
+        return primaryPersistenceStatus;
+    }
+
+    public synchronized PersistenceStatus getActivePersistenceStatus() {
+        return activePersistenceStatus;
     }
 
     public void awaitPendingOperations() {

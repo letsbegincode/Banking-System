@@ -2,6 +2,7 @@ package banking.api;
 
 import banking.account.Account;
 import banking.operation.OperationResult;
+import banking.persistence.PersistenceStatus;
 import banking.service.Bank;
 
 import com.sun.net.httpserver.Headers;
@@ -155,7 +156,17 @@ public class BankHttpServer {
         @Override
         protected void handleInternal(HttpExchange exchange) throws IOException {
             ensureMethod(exchange, "GET");
-            respond(exchange, 200, "{\"status\":\"ok\"}");
+            PersistenceStatus primary = bank.getPrimaryPersistenceStatus();
+            PersistenceStatus active = bank.getActivePersistenceStatus();
+            boolean available = primary != null && primary.isAvailable();
+            int status = available ? 200 : 503;
+            String persistence = "\"persistence\":{" + "\"primary\":" + persistenceJson(primary)
+                    + ",\"active\":" + persistenceJson(active) + "}";
+            String body = '{' + new StringJoiner(",")
+                    .add("\"status\":\"" + (available ? "ok" : "degraded") + "\"")
+                    .add(persistence)
+                    .toString() + '}';
+            respond(exchange, status, body);
         }
     }
 
@@ -279,6 +290,22 @@ public class BankHttpServer {
             .add("\"type\":\"" + escape(account.getAccountType()) + "\"")
             .add("\"balance\":" + balance)
             .toString() + '}';
+    }
+
+    private String persistenceJson(PersistenceStatus status) {
+        if (status == null) {
+            return "{\"provider\":\"unknown\",\"available\":false,\"message\":\"Unavailable\"}";
+        }
+        StringBuilder builder = new StringBuilder("{");
+        builder.append("\"provider\":\"").append(escape(status.getProvider())).append("\"");
+        builder.append(",\"available\":").append(status.isAvailable());
+        builder.append(",\"message\":\"").append(escape(status.getMessage())).append("\"");
+        status.getError()
+                .map(Throwable::getMessage)
+                .filter(msg -> msg != null && !msg.isBlank())
+                .ifPresent(msg -> builder.append(",\"error\":\"").append(escape(msg)).append("\""));
+        builder.append('}');
+        return builder.toString();
     }
 
     private String escape(String value) {

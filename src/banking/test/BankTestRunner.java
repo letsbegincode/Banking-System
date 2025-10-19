@@ -20,6 +20,7 @@ import java.util.concurrent.CompletableFuture;
 public final class BankTestRunner {
     private int passed;
     private int failed;
+    private final DatabaseTestHarness databaseHarness = DatabaseTestHarness.initialize();
 
     public static void main(String[] args) {
         BankTestRunner runner = new BankTestRunner();
@@ -61,7 +62,7 @@ public final class BankTestRunner {
     }
 
     private void shouldDepositFunds() {
-        Bank bank = new Bank();
+        Bank bank = newBank();
         try {
             Account account = bank.createAccount("Alice", "savings", 0);
             CompletableFuture<?> future = bank.deposit(account.getAccountNumber(), 200.0);
@@ -76,7 +77,7 @@ public final class BankTestRunner {
     }
 
     private void shouldWithdrawFunds() {
-        Bank bank = new Bank();
+        Bank bank = newBank();
         try {
             Account account = bank.createAccount("Bob", "savings", 0);
             bank.deposit(account.getAccountNumber(), 2000.0).join();
@@ -91,7 +92,7 @@ public final class BankTestRunner {
     }
 
     private void shouldTransferFunds() {
-        Bank bank = new Bank();
+        Bank bank = newBank();
         try {
             Account source = bank.createAccount("Charlie", "current", 0);
             Account target = bank.createAccount("Dana", "savings", 0);
@@ -111,7 +112,7 @@ public final class BankTestRunner {
     }
 
     private void shouldApplyInterest() {
-        Bank bank = new Bank();
+        Bank bank = newBank();
         try {
             Account savings = bank.createAccount("Eve", "savings", 0);
             bank.deposit(savings.getAccountNumber(), 1200.0).join();
@@ -127,7 +128,7 @@ public final class BankTestRunner {
     }
 
     private void shouldGenerateStatement() {
-        Bank bank = new Bank();
+        Bank bank = newBank();
         try {
             Account account = bank.createAccount("Frank", "current", 0);
             bank.deposit(account.getAccountNumber(), 500.0).join();
@@ -149,7 +150,7 @@ public final class BankTestRunner {
     }
 
     private void shouldServeHttpApi() {
-        Bank bank = new Bank();
+        Bank bank = newBank();
         BankHttpServer server = new BankHttpServer(bank, 0);
         try {
             server.start();
@@ -262,6 +263,13 @@ public final class BankTestRunner {
         if (expected != actual) {
             throw new AssertionError(message + " (expected: " + expected + ", actual: " + actual + ")");
         }
+    }
+
+    private Bank newBank() {
+        if (databaseHarness != null) {
+            return databaseHarness.createBank();
+        }
+        return new Bank();
     }
 
     private record HttpResponse(int statusCode, String body) {

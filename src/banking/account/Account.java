@@ -22,7 +22,7 @@ public abstract class Account implements Serializable {
     private final int accountNumber;
     private double balance;
     private final List<BaseTransaction> transactions;
-    private final String creationDate;
+    private String creationDate;
 
     protected Account(String userName, int accountNumber) {
         this.accountNumber = accountNumber;
@@ -131,6 +131,25 @@ public abstract class Account implements Serializable {
     }
 
     protected synchronized void recordTransaction(BaseTransaction transaction) {
+        transactions.add(transaction);
+    }
+
+    public synchronized void restore(double balance, List<BaseTransaction> history) {
+        restore(balance, history, null);
+    }
+
+    public synchronized void restore(double balance, List<BaseTransaction> history, String creationDate) {
+        this.balance = balance;
+        transactions.clear();
+        if (history != null) {
+            transactions.addAll(history);
+        }
+        if (creationDate != null && !creationDate.isBlank()) {
+            this.creationDate = creationDate;
+        }
+    }
+
+    public synchronized void appendHistoricalTransaction(BaseTransaction transaction) {
         transactions.add(transaction);
     }
 }

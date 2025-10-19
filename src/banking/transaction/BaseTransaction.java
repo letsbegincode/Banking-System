@@ -14,9 +14,13 @@ public abstract class BaseTransaction implements Serializable {
     private final String transactionId;
 
     protected BaseTransaction(double amount) {
+        this(amount, null, null);
+    }
+
+    protected BaseTransaction(double amount, String transactionId, LocalDateTime timestamp) {
         this.amount = amount;
-        this.timestamp = LocalDateTime.now();
-        this.transactionId = generateTransactionId();
+        this.timestamp = timestamp == null ? LocalDateTime.now() : timestamp;
+        this.transactionId = transactionId == null ? generateTransactionId() : transactionId;
     }
 
     private String generateTransactionId() {

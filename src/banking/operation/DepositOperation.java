@@ -2,6 +2,9 @@ package banking.operation;
 
 import banking.account.Account;
 
+import java.util.Collection;
+import java.util.List;
+
 public class DepositOperation implements AccountOperation {
     private final Account account;
     private final double amount;
@@ -25,5 +28,10 @@ public class DepositOperation implements AccountOperation {
     @Override
     public String getDescription() {
         return "Deposit of " + amount + " to account " + account.getAccountNumber();
+    }
+
+    @Override
+    public Collection<Account> affectedAccounts() {
+        return List.of(account);
     }
 }

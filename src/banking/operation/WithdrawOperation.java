@@ -2,6 +2,9 @@ package banking.operation;
 
 import banking.account.Account;
 
+import java.util.Collection;
+import java.util.List;
+
 public class WithdrawOperation implements AccountOperation {
     private final Account account;
     private final double amount;
@@ -28,5 +31,10 @@ public class WithdrawOperation implements AccountOperation {
     @Override
     public String getDescription() {
         return "Withdrawal of " + amount + " from account " + account.getAccountNumber();
+    }
+
+    @Override
+    public Collection<Account> affectedAccounts() {
+        return List.of(account);
     }
 }
