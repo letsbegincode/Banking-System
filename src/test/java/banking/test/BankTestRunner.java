@@ -15,9 +15,14 @@ import banking.report.AccountStatement;
 import banking.report.AnalyticsReport;
 import banking.report.AnalyticsReportRequest;
 import banking.report.StatementGenerator;
+<<<<<<< HEAD:src/test/java/banking/test/BankTestRunner.java
 import banking.service.Bank;<<<<<<<<HEAD:src/test/java/banking/test/BankTestRunner.java
 import banking.ui.presenter.AnalyticsPresenter;========
 import banking.persistence.memory.InMemoryAccountRepository;>>>>>>>>origin/pr/20:src/main/java/banking/test/BankTestRunner.java
+=======
+import banking.service.Bank;
+import banking.telemetry.TelemetryCollector;
+>>>>>>> origin/pr/21:src/banking/test/BankTestRunner.java
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -56,12 +61,18 @@ public final class BankTestRunner {
         execute("interest applied to savings accounts", this::shouldApplyInterest);
         execute("statement summarizes period balances", this::shouldGenerateStatement);
         execute("http gateway exposes core workflows", this::shouldServeHttpApi);
+<<<<<<< HEAD:src/test/java/banking/test/BankTestRunner.java
         execute("analytics aggregates balances and trends", this::shouldGenerateAnalyticsReport);
         execute("analytics exports format csv and json", this::shouldFormatAnalyticsExports);
+=======
+        execute("gateway enforces validation and rate limits", this::shouldHardenGateway);
+        execute("telemetry collector aggregates events", this::shouldEmitTelemetry);
+>>>>>>> origin/pr/21:src/banking/test/BankTestRunner.java
     }
 
     private void execute(String name, TestCase testCase) {
         try {
+            TelemetryCollector.getInstance().reset();
             testCase.run();
             passed++;
             System.out.println("[PASS] " + name);
@@ -305,8 +316,61 @@ public final class BankTestRunner {
         }
     }
 
+<<<<<<< HEAD:src/test/java/banking/test/BankTestRunner.java
     private void shouldFormatAnalyticsExports() {
         Bank bank = new Bank();
+=======
+    private void shouldHardenGateway() {
+        Bank bank = new Bank();
+        BankHttpServer server = new BankHttpServer(bank, 0);
+        try {
+            server.start();
+            String baseUrl = "http://localhost:" + server.getPort();
+
+            HttpResponse rejectedContentType = sendRequest("POST", baseUrl + "/accounts",
+                    "name=Invalid&type=savings", "text/plain");
+            assertEquals(400, rejectedContentType.statusCode(), "Invalid content type should be rejected");
+            assertTrue(rejectedContentType.body().contains("Unsupported Content-Type"),
+                    "Error response should describe validation failure");
+
+            boolean rateLimited = false;
+            for (int i = 0; i < 25; i++) {
+                HttpResponse response = sendRequest("GET", baseUrl + "/health", null);
+                if (response.statusCode() == 429) {
+                    rateLimited = true;
+                    break;
+                }
+            }
+            assertTrue(rateLimited, "Burst traffic should trigger rate limiting");
+        } finally {
+            server.stop();
+            bank.shutdown();
+        }
+    }
+
+    private void shouldEmitTelemetry() {
+        Bank bank = new Bank();
+        try {
+            Account account = bank.createAccount("Ivy", "savings", 500);
+            bank.deposit(account.getAccountNumber(), 250).join();
+            bank.withdraw(account.getAccountNumber(), 100).join();
+
+            TelemetryCollector.TelemetrySnapshot snapshot = TelemetryCollector.getInstance().snapshot();
+            assertTrue(snapshot.successfulOperations() >= 2,
+                    "Successful operations should be tracked");
+            assertEquals(0, snapshot.httpRequests(), "No HTTP requests should be recorded for pure service flows");
+            assertTrue(!snapshot.events().isEmpty(), "Telemetry events should be captured");
+        } finally {
+            bank.shutdown();
+        }
+    }
+
+    private HttpResponse sendRequest(String method, String url, String body) {
+        return sendRequest(method, url, body, "application/x-www-form-urlencoded; charset=utf-8");
+    }
+
+    private HttpResponse sendRequest(String method, String url, String body, String contentType) {
+>>>>>>> origin/pr/21:src/banking/test/BankTestRunner.java
         try {
             Account account = bank.createAccount("Kara", "savings", 0);
             bank.deposit(account.getAccountNumber(), 1300.0).join();
@@ -339,10 +403,15 @@ public final class BankTestRunner {
             HttpURLConnection connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
             connection.setRequestMethod(method);
             connection.setDoInput(true);
+<<<<<<< HEAD:src/test/java/banking/test/BankTestRunner.java
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=utf-8");
             connection.setRequestProperty("X-API-Key", System.getProperty("banking.test.apiKey", "local-dev-key"));
             if (token != null) {
                 connection.setRequestProperty("Authorization", "Bearer " + token);
+=======
+            if (contentType != null) {
+                connection.setRequestProperty("Content-Type", contentType);
+>>>>>>> origin/pr/21:src/banking/test/BankTestRunner.java
             }
             if (body != null && !body.isEmpty()) {
                 byte[] payload = body.getBytes(StandardCharsets.UTF_8);

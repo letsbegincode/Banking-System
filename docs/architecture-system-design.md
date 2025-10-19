@@ -74,6 +74,14 @@ flowchart LR
 - **Service Interfaces:** Wrap the domain layer in REST or gRPC endpoints to support distributed user interfaces and automation.
 - **Horizontal Scale:** Once stateless adapters exist, run multiple instances behind a load balancer and rely on the shared database for consistency.
 
+## Hardened HTTP Gateway
+The REST adapter exposed by `BankHttpServer` now mirrors production-grade edge defenses:
+
+- **Validation Filters:** Incoming POST/PUT requests require form or JSON content types and respect conservative payload limits before reaching the domain.
+- **Rate Limiting:** A per-client token bucket throttles bursts, returning `429` when thresholds are exceeded to shield downstream executors.
+- **Structured Logging:** Request/response lifecycles are emitted to the shared telemetry collector so HTTP health shows up beside core banking metrics.
+- **Graceful Shutdown:** Runtime hooks drain in-flight work, coordinating with the bank service shutdown sequence for predictable maintenance windows.
+
 ## Infrastructure & Deployment
 - **Local:** Developers default to Docker Compose, which provisions MySQL alongside the console/API containers for parity with staging. Snapshot mode is still available for isolated experiments but should not be committed to source control.
 - **Staging/Production Concept:** Package the application as a runnable JAR. Deploy to Kubernetes or VMs with managed MySQL instances, scheduled logical backups, and secrets-driven configuration.
