@@ -1,16 +1,20 @@
 package banking.test;
 
 import banking.account.Account;
-<<<<<<< HEAD
-import banking.service.Bank;
-
-=======
+import banking.api.BankHttpServer;
 import banking.report.AccountStatement;
 import banking.report.StatementGenerator;
 import banking.service.Bank;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.time.LocalDate;
->>>>>>> origin/pr/11
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 
 public final class BankTestRunner {
@@ -31,10 +35,8 @@ public final class BankTestRunner {
         execute("withdraw reduces balance when allowed", this::shouldWithdrawFunds);
         execute("transfer moves funds between accounts", this::shouldTransferFunds);
         execute("interest applied to savings accounts", this::shouldApplyInterest);
-<<<<<<< HEAD
-=======
         execute("statement summarizes period balances", this::shouldGenerateStatement);
->>>>>>> origin/pr/11
+        execute("http gateway exposes core workflows", this::shouldServeHttpApi);
     }
 
     private void execute(String name, TestCase testCase) {
@@ -124,8 +126,6 @@ public final class BankTestRunner {
         }
     }
 
-<<<<<<< HEAD
-=======
     private void shouldGenerateStatement() {
         Bank bank = new Bank();
         try {
@@ -148,7 +148,98 @@ public final class BankTestRunner {
         }
     }
 
->>>>>>> origin/pr/11
+    private void shouldServeHttpApi() {
+        Bank bank = new Bank();
+        BankHttpServer server = new BankHttpServer(bank, 0);
+        try {
+            server.start();
+            int port = server.getPort();
+            String baseUrl = "http://localhost:" + port;
+
+            HttpResponse createSavings = sendRequest("POST", baseUrl + "/accounts",
+                    "name=Grace&type=savings&deposit=1500");
+            assertEquals(201, createSavings.statusCode(), "Account creation should return 201");
+            int savingsAccount = extractAccountNumber(createSavings.body());
+
+            HttpResponse createCurrent = sendRequest("POST", baseUrl + "/accounts",
+                    "name=Henry&type=current&deposit=50");
+            assertEquals(201, createCurrent.statusCode(), "Account creation should return 201");
+            int currentAccount = extractAccountNumber(createCurrent.body());
+
+            HttpResponse deposit = sendRequest("POST", baseUrl + "/operations/deposit",
+                    "accountNumber=" + savingsAccount + "&amount=100");
+            assertEquals(200, deposit.statusCode(), "Deposit should succeed");
+            assertTrue(deposit.body().contains("\"success\":true"), "Deposit response should indicate success");
+
+            HttpResponse transfer = sendRequest("POST", baseUrl + "/operations/transfer",
+                    "sourceAccount=" + savingsAccount + "&targetAccount=" + currentAccount + "&amount=75");
+            assertEquals(200, transfer.statusCode(), "Transfer should succeed");
+            assertTrue(transfer.body().contains("\"success\":true"), "Transfer response should indicate success");
+
+            HttpResponse accounts = sendRequest("GET", baseUrl + "/accounts", null);
+            assertEquals(200, accounts.statusCode(), "Accounts listing should succeed");
+            assertTrue(accounts.body().contains("\"balance\":1525.00"),
+                    "Savings account should reflect post-transfer balance");
+            assertTrue(accounts.body().contains("\"balance\":125.00"),
+                    "Current account should reflect received transfer");
+        } finally {
+            server.stop();
+            bank.shutdown();
+        }
+    }
+
+    private HttpResponse sendRequest(String method, String url, String body) {
+        try {
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod(method);
+            connection.setDoInput(true);
+            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=utf-8");
+            if (body != null && !body.isEmpty()) {
+                byte[] payload = body.getBytes(StandardCharsets.UTF_8);
+                connection.setDoOutput(true);
+                connection.setFixedLengthStreamingMode(payload.length);
+                connection.connect();
+                try (OutputStream outputStream = connection.getOutputStream()) {
+                    outputStream.write(payload);
+                }
+            } else {
+                connection.connect();
+            }
+
+            int status = connection.getResponseCode();
+            InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+            String responseBody = stream == null ? "" : readStream(stream);
+            connection.disconnect();
+            return new HttpResponse(status, responseBody);
+        } catch (IOException e) {
+            throw new AssertionError("HTTP request failed: " + e.getMessage(), e);
+        }
+    }
+
+    private String readStream(InputStream stream) throws IOException {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            StringBuilder builder = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                builder.append(line);
+            }
+            return builder.toString();
+        }
+    }
+
+    private int extractAccountNumber(String json) {
+        int index = json.indexOf("\"accountNumber\":");
+        if (index < 0) {
+            throw new AssertionError("Account number not present in response: " + json);
+        }
+        int start = index + "\"accountNumber\":".length();
+        int end = json.indexOf(',', start);
+        if (end < 0) {
+            end = json.indexOf('}', start);
+        }
+        return Integer.parseInt(json.substring(start, end));
+    }
+
     private static void assertEquals(double expected, double actual, double delta, String message) {
         if (Math.abs(expected - actual) > delta) {
             throw new AssertionError(message + " (expected: " + expected + ", actual: " + actual + ")");
@@ -167,15 +258,15 @@ public final class BankTestRunner {
         }
     }
 
-<<<<<<< HEAD
-=======
     private static void assertEquals(int expected, int actual, String message) {
         if (expected != actual) {
             throw new AssertionError(message + " (expected: " + expected + ", actual: " + actual + ")");
         }
     }
 
->>>>>>> origin/pr/11
+    private record HttpResponse(int statusCode, String body) {
+    }
+
     @FunctionalInterface
     private interface TestCase {
         void run();

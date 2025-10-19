@@ -12,29 +12,13 @@ public class DepositOperation implements AccountOperation {
     }
 
     @Override
-<<<<<<< HEAD
-<<<<<<< HEAD
-    public boolean execute() {
-        try {
-            account.deposit(amount);
-            return true;
-        } catch (Exception e) {
-            System.out.println("Deposit failed: " + e.getMessage());
-            return false;
-=======
-=======
->>>>>>> origin/pr/11
     public OperationResult execute() {
         try {
             account.deposit(amount);
             return OperationResult.success("Deposit of " + amount + " completed for account "
-                + account.getAccountNumber());
+                    + account.getAccountNumber());
         } catch (IllegalArgumentException e) {
             return OperationResult.failure("Deposit failed: " + e.getMessage());
-<<<<<<< HEAD
->>>>>>> origin/pr/10
-=======
->>>>>>> origin/pr/11
         }
     }
 

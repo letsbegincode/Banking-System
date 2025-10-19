@@ -195,6 +195,19 @@
 │  │    - Creates new bank if file doesn't exist                                │   │
 │  └─────────────────────────────────────────────────────────────────────────────┘   │
 │                                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐   │
+│  │                         BankHttpServer                                     │   │
+│  │                       (HTTP Adapter)                                       │   │
+│  │                                                                             │   │
+│  │  Public Methods:                                                           │   │
+│  │  • start(): void                                                           │   │
+│  │    - Binds lightweight HTTP server and registers REST contexts             │   │
+│  │  • stop(): void                                                            │   │
+│  │    - Shuts down contexts and executor                                      │   │
+│  │  • getPort(): int                                                          │   │
+│  │    - Reports the bound local port                                          │   │
+│  └─────────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                     │
 └─────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
