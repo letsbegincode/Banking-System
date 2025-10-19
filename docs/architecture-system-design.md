@@ -105,6 +105,25 @@ Automation clients and staging smoke tests interact with the unified HTTP adapte
 | `/operations/deposit` | POST | Queue a deposit for asynchronous processing. Requires `X-API-Key`. |
 | `/operations/withdraw` | POST | Queue a withdrawal with validation feedback. Requires `X-API-Key`. |
 | `/operations/transfer` | POST | Atomically move funds between accounts with conflict handling. Requires `X-API-Key`. |
+## Security Requirements
+- **Strong operator authentication:** Console and API operators must authenticate with salted password hashes stored outside of source control. Only unique, role-bound accounts are permitted.
+- **Token-based API access:** REST endpoints require short-lived bearer tokens carrying explicit role assignments. Tokens must be revocable without restarting the service.
+- **Least privilege authorization:** Roles map to fine-grained permissions (account creation, balance queries, funds movement, health checks). Endpoints verify both authentication and the relevant permission before executing.
+- **Secure credential handling:** Passwords are never logged or stored in plaintext. Hashing uses per-user salts and modern digest algorithms. Token storage purges expired entries eagerly to limit attack windows.
+- **Operational safety:** Administrative tooling must expose the ability to enumerate and revoke active tokens before shutdown. Shutdown flows automatically stop the HTTP listener to avoid orphaned services.
+
+## Threat Model
+- **Assets:** Customer account data, transaction history, operator credentials, issued access tokens, and the serialized persistence store.
+- **Adversaries:**
+  - External attackers attempting to call HTTP endpoints without credentials or with stolen/forged tokens.
+  - Insider operators with limited roles attempting to escalate privileges or reuse old tokens.
+  - Network eavesdroppers seeking to replay captured credentials or tokens.
+- **Attack Surfaces & Mitigations:**
+  - *HTTP interface:* Bearer-token middleware rejects missing or invalid tokens (401) and enforces per-endpoint permissions (403) to prevent privilege escalation.
+  - *Credential store:* Salted hashes combined with credential bootstrap outside of the repository mitigate offline cracking and accidental disclosure.
+  - *Token lifecycle:* Short expirations, manual revocation, and automatic purge reduce replay windows. Shutdown routines stop the server, invalidating active connections.
+  - *Console tooling:* Login prompts and explicit operator flows ensure only authenticated staff can launch or administer the API. Tokens are displayed once and auditable through the management menu.
+- **Assumptions & Future Hardening:** Transport security (TLS) and secret distribution are out of scope for the current CLI deployment. When deploying remotely, terminate TLS at the load balancer or service host, integrate with an HSM or secret manager, and enable auditing/alerting on repeated authentication failures.
 
 ## Disaster Recovery
 - Store serialized snapshots (or database backups) offsite.

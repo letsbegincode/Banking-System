@@ -3,6 +3,12 @@ package banking.api;
 import banking.account.Account;
 import banking.operation.OperationResult;
 import banking.persistence.BankDAO;
+import banking.security.AuthenticationToken;
+import banking.security.AuthorizationService;
+import banking.security.ForbiddenException;
+import banking.security.Permission;
+import banking.security.TokenService;
+import banking.security.UnauthorizedException;
 import banking.service.Bank;
 import banking.ui.presenter.AnalyticsPresenter;
 
@@ -43,11 +49,15 @@ public final class BankHttpServer {
     private static final String TEXT_PLAIN = "text/plain; charset=utf-8";
 
     private final Bank bank;
-    private final int requestedPort;
-    private final String expectedApiKey;
+    private final int requestedPort;<<<<<<<HEAD:src/banking/api/BankHttpServer.java
+    private final String expectedApiKey;=======
+    private final TokenService tokenService;
+    private final AuthorizationService authorizationService;>>>>>>>origin/pr/19:src/main/java/banking/api/BankHttpServer.java
     private HttpServer server;
     private ExecutorService executorService;
     private Instant bootInstant;
+
+    <<<<<<<HEAD:src/banking/api/BankHttpServer.java
 
     public BankHttpServer(Bank bank, int port) {
         this(bank,
@@ -68,6 +78,15 @@ public final class BankHttpServer {
         this.expectedApiKey = Optional.ofNullable(System.getenv("BANKING_API_KEY"))
                 .filter(value -> !value.isBlank())
                 .orElse("local-dev-key");
+=======
+
+    public BankHttpServer(Bank bank, int port, TokenService tokenService,
+                          AuthorizationService authorizationService) {
+        this.bank = Objects.requireNonNull(bank, "bank");
+        this.requestedPort = port;
+        this.tokenService = Objects.requireNonNull(tokenService, "tokenService");
+        this.authorizationService = Objects.requireNonNull(authorizationService, "authorizationService");
+>>>>>>> origin/pr/19:src/main/java/banking/api/BankHttpServer.java
     }
 
     public synchronized void start() {
@@ -120,6 +139,10 @@ public final class BankHttpServer {
         BankDAO.saveBank(bank);
     }
 
+    public synchronized boolean isRunning() {
+        return server != null;
+    }
+
     public synchronized int getPort() {
         if (server == null) {
             throw new IllegalStateException("Server is not running");
@@ -145,9 +168,18 @@ public final class BankHttpServer {
                     enforceApiKey(exchange.getRequestHeaders());
                 }
                 handleInternal(exchange);
+<<<<<<< HEAD:src/banking/api/BankHttpServer.java
             } catch (ClientErrorException e) {
                 writeJson(exchange, e.statusCode,
                         Map.of("error", e.getMessage(), "success", false));
+=======
+            } catch (UnauthorizedException e) {
+                respond(exchange, 401, jsonError(e.getMessage()));
+            } catch (ForbiddenException e) {
+                respond(exchange, 403, jsonError(e.getMessage()));
+            } catch (IllegalArgumentException e) {
+                respond(exchange, 400, jsonError(e.getMessage()));
+>>>>>>> origin/pr/19:src/main/java/banking/api/BankHttpServer.java
             } catch (Exception e) {
                 writeJson(exchange, 500,
                         Map.of("error", "Internal server error: " + e.getMessage(), "success", false));
@@ -156,8 +188,27 @@ public final class BankHttpServer {
 
         protected abstract void handleInternal(HttpExchange exchange) throws Exception;
 
+        <<<<<<<HEAD:src/banking/api/BankHttpServer.java
+
         protected boolean requiresAuthentication() {
             return true;
+=======
+
+        protected AuthenticationToken requireAuthentication(HttpExchange exchange) {
+            String header = exchange.getRequestHeaders().getFirst("Authorization");
+            if (header == null || header.isBlank() || !header.startsWith("Bearer ")) {
+                throw new UnauthorizedException("Missing bearer token");
+            }
+            String tokenValue = header.substring("Bearer ".length()).trim();
+            return tokenService.validate(tokenValue)
+                .orElseThrow(() -> new UnauthorizedException("Token is invalid or expired"));
+        }
+
+        protected AuthenticationToken requirePermission(HttpExchange exchange, Permission permission) {
+            AuthenticationToken token = requireAuthentication(exchange);
+            authorizationService.ensureAuthorized(token, permission);
+            return token;
+>>>>>>> origin/pr/19:src/main/java/banking/api/BankHttpServer.java
         }
 
         protected void ensureMethod(HttpExchange exchange, String expectedMethod) {
@@ -213,6 +264,7 @@ public final class BankHttpServer {
     private final class HealthHandler extends BaseHandler {
         @Override
         protected void handleInternal(HttpExchange exchange) throws IOException {
+            requirePermission(exchange, Permission.HEALTH_READ);
             ensureMethod(exchange, "GET");
             writeJson(exchange, 200, Map.of("status", "ok", "uptimeSeconds",
                     Duration.between(bootInstant, Instant.now()).toSeconds()));
@@ -240,9 +292,18 @@ public final class BankHttpServer {
     private final class AccountsHandler extends BaseHandler {
         @Override
         protected void handleInternal(HttpExchange exchange) throws Exception {
+<<<<<<< HEAD:src/banking/api/BankHttpServer.java
             if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                 listAccounts(exchange);
             } else if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+=======
+            String method = exchange.getRequestMethod();
+            if ("GET".equalsIgnoreCase(method)) {
+                requirePermission(exchange, Permission.ACCOUNT_READ);
+                listAccounts(exchange);
+            } else if ("POST".equalsIgnoreCase(method)) {
+                requirePermission(exchange, Permission.ACCOUNT_CREATE);
+>>>>>>> origin/pr/19:src/main/java/banking/api/BankHttpServer.java
                 createAccount(exchange);
             } else {
                 throw new ClientErrorException(405, "Unsupported method. Expected GET or POST");
@@ -383,6 +444,7 @@ public final class BankHttpServer {
         @Override
         protected void handleInternal(HttpExchange exchange) throws Exception {
             ensureMethod(exchange, "POST");
+            requirePermission(exchange, Permission.FUNDS_DEPOSIT);
             Map<String, String> params = parseParams(exchange);
             switch (type) {
                 case DEPOSIT -> handleDeposit(exchange, params);
@@ -413,6 +475,8 @@ public final class BankHttpServer {
             executeOperation(exchange, bank.transfer(source, target, amount));
         }
     }
+
+    <<<<<<<HEAD:src/banking/api/BankHttpServer.java
 
     private void executeOperation(HttpExchange exchange, CompletableFuture<OperationResult> future) throws IOException {
         OperationResult result;
@@ -481,6 +545,32 @@ public final class BankHttpServer {
         exchange.sendResponseHeaders(status, body.length);
         try (OutputStream outputStream = exchange.getResponseBody()) {
             outputStream.write(body);
+=======
+    private final class WithdrawHandler extends JsonHandler {
+        @Override
+        protected void handleInternal(HttpExchange exchange) throws Exception {
+            ensureMethod(exchange, "POST");
+            requirePermission(exchange, Permission.FUNDS_WITHDRAW);
+            Map<String, String> params = parseParams(exchange);
+            int accountNumber = parseAccountNumber(params.get("accountNumber"));
+            double amount = parseAmount(params.get("amount"));
+            OperationResult result = bank.withdraw(accountNumber, amount).join();
+            respond(exchange, statusFor(result), resultJson(result));
+        }
+    }
+
+    private final class TransferHandler extends JsonHandler {
+        @Override
+        protected void handleInternal(HttpExchange exchange) throws Exception {
+            ensureMethod(exchange, "POST");
+            requirePermission(exchange, Permission.FUNDS_TRANSFER);
+            Map<String, String> params = parseParams(exchange);
+            int source = parseAccountNumber(params.get("sourceAccount"));
+            int target = parseAccountNumber(params.get("targetAccount"));
+            double amount = parseAmount(params.get("amount"));
+            OperationResult result = bank.transfer(source, target, amount).join();
+            respond(exchange, statusFor(result), resultJson(result));
+>>>>>>> origin/pr/19:src/main/java/banking/api/BankHttpServer.java
         }
     }
 

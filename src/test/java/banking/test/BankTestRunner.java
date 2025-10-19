@@ -3,6 +3,14 @@ package banking.test;
 import banking.account.Account;
 import banking.api.BankHttpServer;
 import banking.report.AccountAnalyticsService;
+import banking.security.AuthenticationService;
+import banking.security.AuthenticationToken;
+import banking.security.AuthorizationService;
+import banking.security.CredentialStore;
+import banking.security.OperatorCredential;
+import banking.security.PasswordHasher;
+import banking.security.Role;
+import banking.security.TokenService;
 import banking.report.AccountStatement;
 import banking.report.AnalyticsReport;
 import banking.report.AnalyticsReportRequest;
@@ -15,12 +23,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
+import java.net.HttpURLConnection;<<<<<<<HEAD:src/banking/test/BankTestRunner.java
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDate;
+import java.time.LocalDate;=======
+import java.net.URL;>>>>>>>origin/pr/19:src/test/java/banking/test/BankTestRunner.java
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 public final class BankTestRunner {
@@ -167,32 +179,41 @@ public final class BankTestRunner {
         System.setProperty("banking.data.path", tempDir.resolve("banking_state.properties").toString());
 
         Bank bank = new Bank();
-        BankHttpServer server = new BankHttpServer(bank, 0);
+        TokenService tokenService = new TokenService();
+        AuthorizationService authorizationService = new AuthorizationService();
+        BankHttpServer server = new BankHttpServer(bank, 0, tokenService, authorizationService);
+        PasswordHasher hasher = new PasswordHasher();
+        CredentialStore store = new CredentialStore();
+        store.store(new OperatorCredential("tester", hasher.hash("password"), Set.of(Role.ADMIN)));
+        AuthenticationService authenticationService = new AuthenticationService(
+            store, hasher, tokenService, Duration.ofHours(1));
+        AuthenticationToken token = authenticationService.login("tester", "password");
         try {
             server.start();
             int port = server.getPort();
             String baseUrl = "http://localhost:" + port;
 
             HttpResponse createSavings = sendRequest("POST", baseUrl + "/accounts",
-                    "name=Grace&type=savings&deposit=1500");
+                    "name=Grace&type=savings&deposit=1500", token.token());
             assertEquals(201, createSavings.statusCode(), "Account creation should return 201");
             int savingsAccount = extractAccountNumber(createSavings.body());
 
             HttpResponse createCurrent = sendRequest("POST", baseUrl + "/accounts",
-                    "name=Henry&type=current&deposit=50");
+                    "name=Henry&type=current&deposit=50", token.token());
             assertEquals(201, createCurrent.statusCode(), "Account creation should return 201");
             int currentAccount = extractAccountNumber(createCurrent.body());
 
             HttpResponse deposit = sendRequest("POST", baseUrl + "/operations/deposit",
-                    "accountNumber=" + savingsAccount + "&amount=100");
+                    "accountNumber=" + savingsAccount + "&amount=100", token.token());
             assertEquals(200, deposit.statusCode(), "Deposit should succeed");
             assertTrue(deposit.body().contains("\"success\":true"), "Deposit response should indicate success");
 
             HttpResponse transfer = sendRequest("POST", baseUrl + "/operations/transfer",
-                    "sourceAccount=" + savingsAccount + "&targetAccount=" + currentAccount + "&amount=75");
+                    "sourceAccount=" + savingsAccount + "&targetAccount=" + currentAccount + "&amount=75", token.token());
             assertEquals(200, transfer.statusCode(), "Transfer should succeed");
             assertTrue(transfer.body().contains("\"success\":true"), "Transfer response should indicate success");
 
+<<<<<<< HEAD:src/banking/test/BankTestRunner.java
             HttpResponse savingsDetails = sendRequest("GET", baseUrl + "/accounts/" + savingsAccount, null);
             assertEquals(200, savingsDetails.statusCode(), "Account lookup should succeed");
             assertTrue(savingsDetails.body().contains("\"userName\":\"Grace\""),
@@ -213,6 +234,9 @@ public final class BankTestRunner {
             assertEquals(404, deletedLookup.statusCode(), "Deleted accounts should not be retrievable");
 
             HttpResponse accounts = sendRequest("GET", baseUrl + "/accounts", null);
+=======
+            HttpResponse accounts = sendRequest("GET", baseUrl + "/accounts", null, token.token());
+>>>>>>> origin/pr/19:src/test/java/banking/test/BankTestRunner.java
             assertEquals(200, accounts.statusCode(), "Accounts listing should succeed");
             assertTrue(accounts.body().contains("\"formattedBalance\":\"1525.00\""),
                     "Savings account should reflect post-transfer balance");
@@ -295,20 +319,27 @@ public final class BankTestRunner {
             assertTrue(csv.contains(Integer.toString(account.getAccountNumber())),
                     "CSV should include account number");
             assertTrue(json.contains("\"balances\""), "JSON should embed balances section");
-            assertTrue(json.contains(String.format(java.util.Locale.US, "\"totalBalance\":%.2f", report.totalBalance())),
+            assertTrue(
+                    json.contains(String.format(java.util.Locale.US, "\"totalBalance\":%.2f", report.totalBalance())),
                     "JSON should embed numeric totals");
         } finally {
             bank.shutdown();
         }
     }
 
-    private HttpResponse sendRequest(String method, String url, String body) {
+    private HttpResponse sendRequest(String method, String url, String body, String token) {
         try {
             HttpURLConnection connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
             connection.setRequestMethod(method);
             connection.setDoInput(true);
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=utf-8");
+<<<<<<< HEAD:src/banking/test/BankTestRunner.java
             connection.setRequestProperty("X-API-Key", System.getProperty("banking.test.apiKey", "local-dev-key"));
+=======
+            if (token != null) {
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+            }
+>>>>>>> origin/pr/19:src/test/java/banking/test/BankTestRunner.java
             if (body != null && !body.isEmpty()) {
                 byte[] payload = body.getBytes(StandardCharsets.UTF_8);
                 connection.setDoOutput(true);

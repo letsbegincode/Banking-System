@@ -1,5 +1,6 @@
 package banking.ui;
 
+import banking.api.BankHttpServer;
 import banking.persistence.BankDAO;
 import banking.report.AccountAnalyticsService;
 import banking.report.StatementGenerator;
@@ -8,17 +9,21 @@ import banking.report.analytics.AnomalyDetectionService;
 import banking.report.analytics.RangeAnalyticsService;
 import banking.report.analytics.TrendAnalyticsService;
 import banking.report.format.ReportFormatter;
+import banking.security.AuthenticationService;
+import banking.security.TokenService;
 import banking.service.Bank;
 import banking.ui.console.ConsoleIO;
 import banking.ui.flow.AccountCreationFlow;
 import banking.ui.flow.AccountDirectoryFlow;
 import banking.ui.flow.AccountManagementFlow;
 import banking.ui.flow.AccountOperationsFlow;
+import banking.ui.flow.ApiServerFlow;
 import banking.ui.flow.ReportFlow;
 import banking.ui.presenter.AccountPresenter;
 import banking.ui.presenter.AnalyticsPresenter;
 import banking.ui.presenter.TransactionPresenter;
 import banking.ui.presenter.StatementPresenter;
+import banking.ui.presenter.TransactionPresenter;
 
 public class ConsoleUI {
     private final Bank bank;
@@ -28,8 +33,10 @@ public class ConsoleUI {
     private final AccountOperationsFlow accountOperationsFlow;
     private final AccountManagementFlow accountManagementFlow;
     private final ReportFlow reportFlow;
+    private final ApiServerFlow apiServerFlow;
 
-    public ConsoleUI(Bank bank) {
+    public ConsoleUI(Bank bank, AuthenticationService authenticationService,
+                     TokenService tokenService, BankHttpServer httpServer) {
         this.bank = bank;
         this.io = new ConsoleIO();
         AccountPresenter accountPresenter = new AccountPresenter(io);
@@ -40,6 +47,7 @@ public class ConsoleUI {
         this.accountManagementFlow = new AccountManagementFlow(bank, io, accountPresenter);
         StatementGenerator statementGenerator = new StatementGenerator();
         StatementPresenter statementPresenter = new StatementPresenter(io, transactionPresenter);
+<<<<<<< HEAD:src/banking/ui/ConsoleUI.java
 <<<<<<< HEAD
         AccountAnalyticsService analyticsService = new AccountAnalyticsService();
         AnalyticsPresenter analyticsPresenter = new AnalyticsPresenter(io);
@@ -62,6 +70,10 @@ public class ConsoleUI {
                 analyticsReportService,
                 reportFormatter);
 >>>>>>> origin/pr/18
+=======
+        this.reportFlow = new ReportFlow(bank, io, accountPresenter, statementGenerator, statementPresenter);
+        this.apiServerFlow = new ApiServerFlow(io, authenticationService, tokenService, httpServer);
+>>>>>>> origin/pr/19:src/main/java/banking/ui/ConsoleUI.java
     }
 
     public void start() {
@@ -79,7 +91,8 @@ public class ConsoleUI {
                 case 4 -> accountDirectoryFlow.searchAccounts();
                 case 5 -> reportFlow.showReportsMenu();
                 case 6 -> accountManagementFlow.manageAccounts();
-                case 7 -> exit = exitApplication();
+                case 7 -> apiServerFlow.manage();
+                case 8 -> exit = exitApplication();
                 default -> io.error("Invalid option. Please try again.");
             }
         }
@@ -95,10 +108,12 @@ public class ConsoleUI {
         io.info("4. Search Accounts");
         io.info("5. Generate Reports");
         io.info("6. Account Management");
-        io.info("7. Exit");
+        io.info("7. API Server & Tokens");
+        io.info("8. Exit");
     }
 
     private boolean exitApplication() {
+        apiServerFlow.shutdown();
         bank.shutdown();
         BankDAO.saveBank(bank);
         io.success("Thank you for using our banking system. Goodbye!");
