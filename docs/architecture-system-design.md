@@ -74,6 +74,12 @@ flowchart LR
 - **Observability:** Extend `TransactionLogger` to integrate with structured logging frameworks (e.g., Logback). Capture metrics for operation latency and failure counts.
 - **Security:** Introduce secrets management for future database credentials and enforce TLS when exposing remote APIs.
 
+## Authentication & Authorization
+- **Roles:** Two primary personas exist. *Operators* can provision accounts, move funds, and administer the platform. *Customers* can initiate self-service interactions (future scope). Authorization logic should treat the operator role as a superset of customer capabilities to simplify permission checks.
+- **Credential Storage:** Store salted password hashes instead of raw secrets. For the in-memory implementation we persist the salt and digest alongside each user record (formatted as `<salt>:<hash>`). Production deployments should replace the in-memory store with an external vault or database table and rotate credentials through an operational process.
+- **Token Service:** Successful logins issue opaque bearer tokens bound to a principal and expiration timestamp. Tokens are kept in-memory with short TTLs (30–60 minutes) and should be invalidated on logout or rotation. When scaling horizontally, replace the in-memory map with a replicated cache (Redis, Hazelcast) or signed JWTs.
+- **Gateway Enforcement:** Every mutating HTTP endpoint requires a valid bearer token. Middleware verifies the token, resolves the caller role, and checks the endpoint-specific permission set. Health probes remain anonymously accessible for liveness checks. Console tooling for launching the HTTP API prompts for operator credentials so that shared environments never expose the gateway without an accountable operator session.
+
 ## Disaster Recovery
 - Store serialized snapshots (or database backups) offsite.
 - Validate backups by performing periodic restore drills in a staging environment.

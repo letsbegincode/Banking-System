@@ -4,6 +4,10 @@ import banking.account.Account;
 import banking.api.BankHttpServer;
 import banking.report.AccountStatement;
 import banking.report.StatementGenerator;
+import banking.security.AuthService;
+import banking.security.CredentialStore;
+import banking.security.Role;
+import banking.security.TokenService;
 import banking.service.Bank;
 
 import java.io.BufferedReader;
@@ -13,9 +17,13 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.time.LocalDate;
+import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
+import java.util.HashMap;
+import java.util.Map;
 
 public final class BankTestRunner {
     private int passed;
@@ -36,7 +44,10 @@ public final class BankTestRunner {
         execute("transfer moves funds between accounts", this::shouldTransferFunds);
         execute("interest applied to savings accounts", this::shouldApplyInterest);
         execute("statement summarizes period balances", this::shouldGenerateStatement);
-        execute("http gateway exposes core workflows", this::shouldServeHttpApi);
+        execute("http gateway exposes core workflows", this::shouldServeHttpApiWithAuthentication);
+        execute("http gateway rejects missing credentials", this::shouldRejectRequestsWithoutToken);
+        execute("http gateway enforces role permissions", this::shouldRejectInsufficientRole);
+        execute("auth login fails with invalid credentials", this::shouldRejectInvalidLogin);
     }
 
     private void execute(String name, TestCase testCase) {
@@ -148,35 +159,39 @@ public final class BankTestRunner {
         }
     }
 
-    private void shouldServeHttpApi() {
+    private void shouldServeHttpApiWithAuthentication() {
         Bank bank = new Bank();
-        BankHttpServer server = new BankHttpServer(bank, 0);
+        AuthFixture auth = authFixture();
+        BankHttpServer server = new BankHttpServer(bank, 0, auth.service());
         try {
             server.start();
             int port = server.getPort();
             String baseUrl = "http://localhost:" + port;
 
+            String operatorToken = login(baseUrl, auth.operatorUser(), auth.operatorPassword());
+            Map<String, String> headers = Map.of("Authorization", "Bearer " + operatorToken);
+
             HttpResponse createSavings = sendRequest("POST", baseUrl + "/accounts",
-                    "name=Grace&type=savings&deposit=1500");
+                    "name=Grace&type=savings&deposit=1500", headers);
             assertEquals(201, createSavings.statusCode(), "Account creation should return 201");
             int savingsAccount = extractAccountNumber(createSavings.body());
 
             HttpResponse createCurrent = sendRequest("POST", baseUrl + "/accounts",
-                    "name=Henry&type=current&deposit=50");
+                    "name=Henry&type=current&deposit=50", headers);
             assertEquals(201, createCurrent.statusCode(), "Account creation should return 201");
             int currentAccount = extractAccountNumber(createCurrent.body());
 
             HttpResponse deposit = sendRequest("POST", baseUrl + "/operations/deposit",
-                    "accountNumber=" + savingsAccount + "&amount=100");
+                    "accountNumber=" + savingsAccount + "&amount=100", headers);
             assertEquals(200, deposit.statusCode(), "Deposit should succeed");
             assertTrue(deposit.body().contains("\"success\":true"), "Deposit response should indicate success");
 
             HttpResponse transfer = sendRequest("POST", baseUrl + "/operations/transfer",
-                    "sourceAccount=" + savingsAccount + "&targetAccount=" + currentAccount + "&amount=75");
+                    "sourceAccount=" + savingsAccount + "&targetAccount=" + currentAccount + "&amount=75", headers);
             assertEquals(200, transfer.statusCode(), "Transfer should succeed");
             assertTrue(transfer.body().contains("\"success\":true"), "Transfer response should indicate success");
 
-            HttpResponse accounts = sendRequest("GET", baseUrl + "/accounts", null);
+            HttpResponse accounts = sendRequest("GET", baseUrl + "/accounts", null, headers);
             assertEquals(200, accounts.statusCode(), "Accounts listing should succeed");
             assertTrue(accounts.body().contains("\"balance\":1525.00"),
                     "Savings account should reflect post-transfer balance");
@@ -188,12 +203,73 @@ public final class BankTestRunner {
         }
     }
 
+    private void shouldRejectRequestsWithoutToken() {
+        Bank bank = new Bank();
+        AuthFixture auth = authFixture();
+        BankHttpServer server = new BankHttpServer(bank, 0, auth.service());
+        try {
+            server.start();
+            String baseUrl = "http://localhost:" + server.getPort();
+
+            HttpResponse response = sendRequest("GET", baseUrl + "/accounts", null);
+            assertEquals(401, response.statusCode(), "Requests without credentials should be rejected");
+            assertTrue(response.body().contains("\"success\":false"), "Error response should flag failure");
+        } finally {
+            server.stop();
+            bank.shutdown();
+        }
+    }
+
+    private void shouldRejectInsufficientRole() {
+        Bank bank = new Bank();
+        AuthFixture auth = authFixture();
+        BankHttpServer server = new BankHttpServer(bank, 0, auth.service());
+        try {
+            server.start();
+            String baseUrl = "http://localhost:" + server.getPort();
+
+            String customerToken = login(baseUrl, auth.customerUser(), auth.customerPassword());
+            Map<String, String> customerHeaders = Map.of("Authorization", "Bearer " + customerToken);
+
+            HttpResponse response = sendRequest("POST", baseUrl + "/accounts",
+                    "name=Isla&type=current&deposit=25", customerHeaders);
+            assertEquals(403, response.statusCode(), "Customer role should be denied operator endpoints");
+        } finally {
+            server.stop();
+            bank.shutdown();
+        }
+    }
+
+    private void shouldRejectInvalidLogin() {
+        Bank bank = new Bank();
+        AuthFixture auth = authFixture();
+        BankHttpServer server = new BankHttpServer(bank, 0, auth.service());
+        try {
+            server.start();
+            String baseUrl = "http://localhost:" + server.getPort();
+
+            HttpResponse response = sendRequest("POST", baseUrl + "/auth/login",
+                    "username=" + encode(auth.operatorUser()) + "&password=wrong", Map.of());
+            assertEquals(401, response.statusCode(), "Invalid credentials should return 401");
+        } finally {
+            server.stop();
+            bank.shutdown();
+        }
+    }
+
     private HttpResponse sendRequest(String method, String url, String body) {
+        return sendRequest(method, url, body, Map.of());
+    }
+
+    private HttpResponse sendRequest(String method, String url, String body, Map<String, String> headers) {
         try {
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod(method);
             connection.setDoInput(true);
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=utf-8");
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                connection.setRequestProperty(entry.getKey(), entry.getValue());
+            }
             if (body != null && !body.isEmpty()) {
                 byte[] payload = body.getBytes(StandardCharsets.UTF_8);
                 connection.setDoOutput(true);
@@ -216,6 +292,21 @@ public final class BankTestRunner {
         }
     }
 
+    private String login(String baseUrl, String username, String password) {
+        HttpResponse response = sendRequest("POST", baseUrl + "/auth/login",
+                "username=" + encode(username) + "&password=" + encode(password), Map.of());
+        assertEquals(200, response.statusCode(), "Login should succeed");
+        return extractStringValue(response.body(), "token");
+    }
+
+    private AuthFixture authFixture() {
+        CredentialStore store = new CredentialStore();
+        store.register("operator-test", "op-password", Role.OPERATOR);
+        store.register("customer-test", "customer-password", Role.CUSTOMER);
+        AuthService authService = new AuthService(store, new TokenService(Duration.ofMinutes(15)));
+        return new AuthFixture(authService, "operator-test", "op-password", "customer-test", "customer-password");
+    }
+
     private String readStream(InputStream stream) throws IOException {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             StringBuilder builder = new StringBuilder();
@@ -225,6 +316,24 @@ public final class BankTestRunner {
             }
             return builder.toString();
         }
+    }
+
+    private String extractStringValue(String json, String field) {
+        String needle = "\"" + field + "\":\"";
+        int index = json.indexOf(needle);
+        if (index < 0) {
+            throw new AssertionError("Field '" + field + "' missing in response: " + json);
+        }
+        int start = index + needle.length();
+        int end = json.indexOf('"', start);
+        if (end < 0) {
+            throw new AssertionError("Value for field '" + field + "' not terminated: " + json);
+        }
+        String value = json.substring(start, end);
+        if (value.isEmpty()) {
+            throw new AssertionError("Field '" + field + "' must not be empty: " + json);
+        }
+        return value;
     }
 
     private int extractAccountNumber(String json) {
@@ -238,6 +347,10 @@ public final class BankTestRunner {
             end = json.indexOf('}', start);
         }
         return Integer.parseInt(json.substring(start, end));
+    }
+
+    private String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     private static void assertEquals(double expected, double actual, double delta, String message) {
@@ -262,6 +375,10 @@ public final class BankTestRunner {
         if (expected != actual) {
             throw new AssertionError(message + " (expected: " + expected + ", actual: " + actual + ")");
         }
+    }
+
+    private record AuthFixture(AuthService service, String operatorUser, String operatorPassword,
+                               String customerUser, String customerPassword) {
     }
 
     private record HttpResponse(int statusCode, String body) {

@@ -2,6 +2,10 @@ package banking.api;
 
 import banking.account.Account;
 import banking.operation.OperationResult;
+import banking.security.AuthService;
+import banking.security.AuthToken;
+import banking.security.Role;
+import banking.security.UserPrincipal;
 import banking.service.Bank;
 
 import com.sun.net.httpserver.Headers;
@@ -30,12 +34,14 @@ import java.util.concurrent.Executors;
 public class BankHttpServer {
     private final Bank bank;
     private final int requestedPort;
+    private final AuthService authService;
     private HttpServer server;
     private ExecutorService executorService;
 
-    public BankHttpServer(Bank bank, int port) {
+    public BankHttpServer(Bank bank, int port, AuthService authService) {
         this.bank = Objects.requireNonNull(bank, "bank");
         this.requestedPort = port;
+        this.authService = Objects.requireNonNull(authService, "authService");
     }
 
     public synchronized void start() {
@@ -49,6 +55,7 @@ public class BankHttpServer {
         }
         executorService = Executors.newFixedThreadPool(4);
         server.createContext("/health", new HealthHandler());
+        server.createContext("/auth/login", new LoginHandler());
         server.createContext("/accounts", new AccountsHandler());
         server.createContext("/operations/deposit", new DepositHandler());
         server.createContext("/operations/withdraw", new WithdrawHandler());
@@ -80,6 +87,8 @@ public class BankHttpServer {
         public final void handle(HttpExchange exchange) throws IOException {
             try {
                 handleInternal(exchange);
+            } catch (HttpError e) {
+                respond(exchange, e.statusCode(), jsonError(e.getMessage()));
             } catch (IllegalArgumentException e) {
                 respond(exchange, 400, jsonError(e.getMessage()));
             } catch (Exception e) {
@@ -151,6 +160,36 @@ public class BankHttpServer {
         }
     }
 
+    private abstract class ProtectedJsonHandler extends JsonHandler {
+        private final Role[] requiredRoles;
+
+        private ProtectedJsonHandler(Role... requiredRoles) {
+            this.requiredRoles = requiredRoles;
+        }
+
+        @Override
+        protected final void handleInternal(HttpExchange exchange) throws Exception {
+            UserPrincipal principal = authenticate(exchange);
+            handleAuthorized(exchange, principal);
+        }
+
+        protected abstract void handleAuthorized(HttpExchange exchange, UserPrincipal principal) throws Exception;
+
+        private UserPrincipal authenticate(HttpExchange exchange) {
+            String header = exchange.getRequestHeaders().getFirst("Authorization");
+            if (header == null || !header.startsWith("Bearer ")) {
+                throw new HttpError(401, "Missing bearer token");
+            }
+            String token = header.substring("Bearer ".length());
+            UserPrincipal principal = authService.verifyToken(token)
+                .orElseThrow(() -> new HttpError(401, "Invalid or expired token"));
+            if (!authService.hasAnyRole(principal, requiredRoles)) {
+                throw new HttpError(403, "Access denied for role " + principal.role());
+            }
+            return principal;
+        }
+    }
+
     private final class HealthHandler extends JsonHandler {
         @Override
         protected void handleInternal(HttpExchange exchange) throws IOException {
@@ -159,9 +198,41 @@ public class BankHttpServer {
         }
     }
 
-    private final class AccountsHandler extends JsonHandler {
+    private final class LoginHandler extends JsonHandler {
         @Override
         protected void handleInternal(HttpExchange exchange) throws Exception {
+            ensureMethod(exchange, "POST");
+            Map<String, String> params = parseParams(exchange);
+            String username = params.get("username");
+            String password = params.get("password");
+            if (username == null || username.isBlank()) {
+                throw new IllegalArgumentException("Parameter 'username' is required");
+            }
+            if (password == null || password.isBlank()) {
+                throw new IllegalArgumentException("Parameter 'password' is required");
+            }
+            AuthToken token = authService.authenticate(username, password)
+                .orElseThrow(() -> new HttpError(401, "Invalid credentials"));
+            respond(exchange, 200, loginResponse(token));
+        }
+
+        private String loginResponse(AuthToken token) {
+            return '{' + new StringJoiner(",")
+                .add("\"success\":true")
+                .add("\"token\":\"" + escape(token.token()) + "\"")
+                .add("\"role\":\"" + token.principal().role() + "\"")
+                .add("\"expiresAt\":\"" + token.expiresAt() + "\"")
+                .toString() + '}';
+        }
+    }
+
+    private final class AccountsHandler extends ProtectedJsonHandler {
+        private AccountsHandler() {
+            super(Role.OPERATOR);
+        }
+
+        @Override
+        protected void handleAuthorized(HttpExchange exchange, UserPrincipal principal) throws Exception {
             String method = exchange.getRequestMethod();
             if ("GET".equalsIgnoreCase(method)) {
                 listAccounts(exchange);
@@ -203,9 +274,13 @@ public class BankHttpServer {
         }
     }
 
-    private final class DepositHandler extends JsonHandler {
+    private final class DepositHandler extends ProtectedJsonHandler {
+        private DepositHandler() {
+            super(Role.OPERATOR);
+        }
+
         @Override
-        protected void handleInternal(HttpExchange exchange) throws Exception {
+        protected void handleAuthorized(HttpExchange exchange, UserPrincipal principal) throws Exception {
             ensureMethod(exchange, "POST");
             Map<String, String> params = parseParams(exchange);
             int accountNumber = parseAccountNumber(params.get("accountNumber"));
@@ -215,9 +290,13 @@ public class BankHttpServer {
         }
     }
 
-    private final class WithdrawHandler extends JsonHandler {
+    private final class WithdrawHandler extends ProtectedJsonHandler {
+        private WithdrawHandler() {
+            super(Role.OPERATOR);
+        }
+
         @Override
-        protected void handleInternal(HttpExchange exchange) throws Exception {
+        protected void handleAuthorized(HttpExchange exchange, UserPrincipal principal) throws Exception {
             ensureMethod(exchange, "POST");
             Map<String, String> params = parseParams(exchange);
             int accountNumber = parseAccountNumber(params.get("accountNumber"));
@@ -227,9 +306,13 @@ public class BankHttpServer {
         }
     }
 
-    private final class TransferHandler extends JsonHandler {
+    private final class TransferHandler extends ProtectedJsonHandler {
+        private TransferHandler() {
+            super(Role.OPERATOR);
+        }
+
         @Override
-        protected void handleInternal(HttpExchange exchange) throws Exception {
+        protected void handleAuthorized(HttpExchange exchange, UserPrincipal principal) throws Exception {
             ensureMethod(exchange, "POST");
             Map<String, String> params = parseParams(exchange);
             int source = parseAccountNumber(params.get("sourceAccount"));
@@ -237,6 +320,19 @@ public class BankHttpServer {
             double amount = parseAmount(params.get("amount"));
             OperationResult result = bank.transfer(source, target, amount).join();
             respond(exchange, statusFor(result), resultJson(result));
+        }
+    }
+
+    private static final class HttpError extends RuntimeException {
+        private final int statusCode;
+
+        private HttpError(int statusCode, String message) {
+            super(message);
+            this.statusCode = statusCode;
+        }
+
+        private int statusCode() {
+            return statusCode;
         }
     }
 
