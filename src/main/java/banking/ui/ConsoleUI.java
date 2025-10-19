@@ -1,11 +1,8 @@
 package banking.ui;
 
-<<<<<<< HEAD
 import banking.api.BankHttpServer;
 import banking.persistence.BankDAO;
 import banking.report.AccountAnalyticsService;
-=======
->>>>>>> origin/pr/20
 import banking.report.StatementGenerator;
 import banking.report.analytics.AnalyticsReportService;
 import banking.report.analytics.AnomalyDetectionService;
@@ -14,6 +11,7 @@ import banking.report.analytics.TrendAnalyticsService;
 import banking.report.format.ReportFormatter;
 import banking.security.AuthenticationService;
 import banking.security.TokenService;
+import banking.security.AuthService;
 import banking.service.Bank;
 import banking.ui.console.ConsoleIO;
 import banking.ui.flow.AccountCreationFlow;
@@ -21,6 +19,7 @@ import banking.ui.flow.AccountDirectoryFlow;
 import banking.ui.flow.AccountManagementFlow;
 import banking.ui.flow.AccountOperationsFlow;
 import banking.ui.flow.ApiServerFlow;
+import banking.ui.flow.ApiAccessFlow;
 import banking.ui.flow.ReportFlow;
 import banking.ui.presenter.AccountPresenter;
 import banking.ui.presenter.AnalyticsPresenter;
@@ -29,17 +28,21 @@ import banking.ui.presenter.StatementPresenter;
 import banking.ui.presenter.TransactionPresenter;
 
 public class ConsoleUI {
-    private final Bank bank;
-    private final ConsoleIO io;
-    private final AccountCreationFlow accountCreationFlow;
-    private final AccountDirectoryFlow accountDirectoryFlow;
-    private final AccountOperationsFlow accountOperationsFlow;
-    private final AccountManagementFlow accountManagementFlow;
-    private final ReportFlow reportFlow;
-    private final ApiServerFlow apiServerFlow;
+        private final Bank bank;
+        private final ConsoleIO io;
+        private final AccountCreationFlow accountCreationFlow;
+        private final AccountDirectoryFlow accountDirectoryFlow;
+        private final AccountOperationsFlow accountOperationsFlow;
+        private final AccountManagementFlow accountManagementFlow;
+        private final ReportFlow reportFlow;
+        private final ApiServerFlow apiServerFlow;
 
     public ConsoleUI(Bank bank, AuthenticationService authenticationService,
                      TokenService tokenService, BankHttpServer httpServer) {
+
+        private final ApiAccessFlow apiAccessFlow;
+
+    public ConsoleUI(Bank bank, AuthService authService) {
         this.bank = bank;
         this.io = new ConsoleIO();
         AccountPresenter accountPresenter = new AccountPresenter(io);
@@ -75,8 +78,12 @@ public class ConsoleUI {
 >>>>>>> origin/pr/18
 =======
         this.reportFlow = new ReportFlow(bank, io, accountPresenter, statementGenerator, statementPresenter);
+<<<<<<< HEAD:src/main/java/banking/ui/ConsoleUI.java
         this.apiServerFlow = new ApiServerFlow(io, authenticationService, tokenService, httpServer);
 >>>>>>> origin/pr/19:src/main/java/banking/ui/ConsoleUI.java
+=======
+        this.apiAccessFlow = new ApiAccessFlow(bank, io, authService);
+>>>>>>> origin/pr/16:src/banking/ui/ConsoleUI.java
     }
 
     public void start() {
@@ -94,7 +101,11 @@ public class ConsoleUI {
                 case 4 -> accountDirectoryFlow.searchAccounts();
                 case 5 -> reportFlow.showReportsMenu();
                 case 6 -> accountManagementFlow.manageAccounts();
+<<<<<<< HEAD:src/main/java/banking/ui/ConsoleUI.java
                 case 7 -> apiServerFlow.manage();
+=======
+                case 7 -> apiAccessFlow.manageHttpGateway();
+>>>>>>> origin/pr/16:src/banking/ui/ConsoleUI.java
                 case 8 -> exit = exitApplication();
                 default -> io.error("Invalid option. Please try again.");
             }
@@ -111,12 +122,20 @@ public class ConsoleUI {
         io.info("4. Search Accounts");
         io.info("5. Generate Reports");
         io.info("6. Account Management");
+<<<<<<< HEAD:src/main/java/banking/ui/ConsoleUI.java
         io.info("7. API Server & Tokens");
+=======
+        io.info("7. HTTP API Management");
+>>>>>>> origin/pr/16:src/banking/ui/ConsoleUI.java
         io.info("8. Exit");
     }
 
     private boolean exitApplication() {
+<<<<<<< HEAD:src/main/java/banking/ui/ConsoleUI.java
         apiServerFlow.shutdown();
+=======
+        apiAccessFlow.shutdown();
+>>>>>>> origin/pr/16:src/banking/ui/ConsoleUI.java
         bank.shutdown();
         io.success("Thank you for using our banking system. Goodbye!");
         return true;
