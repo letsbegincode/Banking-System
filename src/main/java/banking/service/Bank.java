@@ -84,6 +84,17 @@ public class Bank implements AutoCloseable {
         for (Account account : this.accounts.values()) {
             accountLocks.putIfAbsent(account.getAccountNumber(), new ReentrantLock());
             cacheAccount(account);
+<<<<<<< HEAD
+=======
+        }
+
+        if (!this.accounts.isEmpty()) {
+            try {
+                this.repository.saveAccounts(this.accounts.values());
+            } catch (PersistenceException e) {
+                System.err.println("Failed to prime account repository from snapshot: " + e.getMessage());
+            }
+>>>>>>> origin/pr/31
         }
     }
 
