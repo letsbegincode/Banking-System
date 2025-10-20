@@ -156,7 +156,8 @@ public final class JdbcBankRepository implements BankRepository {
                         insertTransaction.setInt(1, account.accountNumber());
                         insertTransaction.setString(2, transaction.type().name());
                         insertTransaction.setDouble(3, transaction.amount());
-                        insertTransaction.setTimestamp(4, Timestamp.from(Instant.parse(transaction.timestamp())));
+                        LocalDateTime occurredAt = DateTimeParsers.parseTransactionTimestamp(transaction.timestamp());
+                        insertTransaction.setTimestamp(4, Timestamp.valueOf(occurredAt));
                         insertTransaction.setString(5, transaction.transactionId());
                         if (transaction.sourceAccount() != null) {
                             insertTransaction.setInt(6, transaction.sourceAccount());
