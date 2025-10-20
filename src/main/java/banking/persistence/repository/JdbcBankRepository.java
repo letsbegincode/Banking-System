@@ -13,8 +13,11 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,8 +25,10 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * JDBC-backed repository that stores accounts and transactions in normalized tables. The
- * implementation performs a full snapshot write on each save to keep the persistence layer simple
+ * JDBC-backed repository that stores accounts and transactions in normalized
+ * tables. The
+ * implementation performs a full snapshot write on each save to keep the
+ * persistence layer simple
  * while still providing durable storage.
  */
 public final class JdbcBankRepository implements BankRepository {
@@ -66,7 +71,8 @@ public final class JdbcBankRepository implements BankRepository {
             }
 
             try (PreparedStatement transactions = connection.prepareStatement(
-                    "SELECT account_number, type, amount, occurred_at, transaction_id, source_account, target_account " +
+                    "SELECT account_number, type, amount, occurred_at, transaction_id, source_account, target_account "
+                            +
                             "FROM bank_transactions ORDER BY occurred_at ASC, id ASC")) {
                 try (ResultSet rs = transactions.executeQuery()) {
                     while (rs.next()) {
@@ -119,8 +125,23 @@ public final class JdbcBankRepository implements BankRepository {
                     insertAccount.setString(2, account.userName());
                     insertAccount.setString(3, account.accountType());
                     insertAccount.setDouble(4, account.balance());
-                    LocalDateTime creation = LocalDateTime.parse(account.creationDate());
+
+                    // Robust parsing: accept full date-time or date-only (yyyy-MM-dd).
+                    String creationDateStr = account.creationDate();
+                    LocalDateTime creation;
+                    if (creationDateStr == null || creationDateStr.isBlank()) {
+                        creation = LocalDateTime.now();
+                    } else {
+                        try {
+                            creation = LocalDateTime.parse(creationDateStr);
+                        } catch (DateTimeParseException ex) {
+                            // fallback to date-only format
+                            creation = LocalDate.parse(creationDateStr, DateTimeFormatter.ISO_LOCAL_DATE)
+                                    .atStartOfDay();
+                        }
+                    }
                     insertAccount.setTimestamp(5, Timestamp.from(creation.toInstant(ZoneOffset.UTC)));
+
                     if (account.minimumBalance() != null) {
                         insertAccount.setDouble(6, account.minimumBalance());
                     } else {

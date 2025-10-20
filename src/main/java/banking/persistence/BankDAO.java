@@ -19,8 +19,33 @@ public final class BankDAO {
     }
 
     public static void saveBank(Bank bank) {
-        BankRepository repository = BankRepositoryFactory.getRepository();
-        repository.save(bank.snapshot());
+        // Defensive: avoid crashing the UI when persistence is misconfigured or fails.
+        if (bank == null) {
+            System.err.println("Attempted to save a null bank instance; skipping persistence.");
+            return;
+        }
+
+        BankRepository repository;
+        try {
+            repository = BankRepositoryFactory.getRepository();
+        } catch (Exception e) {
+            System.err.println("Failed to obtain BankRepository: " + e.getMessage());
+            return;
+        }
+
+        if (repository == null) {
+            System.err.println("No BankRepository available; skipping persistence.");
+            return;
+        }
+
+        try {
+            BankSnapshot snapshot = bank.snapshot();
+            repository.save(snapshot);
+        } catch (Exception e) {
+            // Log and swallow to keep UI responsive; persistence errors should not crash
+            // account creation.
+            System.err.println("Error persisting bank snapshot: " + e.getMessage());
+        }
     }
 
     public static Bank loadBank() {
@@ -64,11 +89,13 @@ public final class BankDAO {
     }
 
     private static Path locateLegacyPath(Path snapshotPath) {
-        if (Files.exists(snapshotPath) && snapshotPath.getFileName().toString().equals(LEGACY_FILENAME)) {
+        // Hardened to tolerate null snapshotPath and avoid unexpected NPEs.
+        if (snapshotPath != null && Files.exists(snapshotPath)
+                && snapshotPath.getFileName().toString().equals(LEGACY_FILENAME)) {
             return snapshotPath;
         }
 
-        Path parent = snapshotPath.getParent();
+        Path parent = snapshotPath == null ? null : snapshotPath.getParent();
         Path candidate = parent == null ? Path.of(LEGACY_FILENAME) : parent.resolve(LEGACY_FILENAME);
         return Files.exists(candidate) ? candidate : null;
     }
