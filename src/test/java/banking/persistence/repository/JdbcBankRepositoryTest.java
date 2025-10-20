@@ -5,8 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -54,6 +56,22 @@ class JdbcBankRepositoryTest {
             LocalDateTime parsed = invokeParse("2025-10-20T13:45:12");
 
             assertEquals(LocalDate.of(2025, 10, 20).atTime(13, 45, 12), parsed);
+        }
+
+        @Test
+        @DisplayName("accepts legacy space separated date time string")
+        void acceptsLegacyDateTime() {
+            LocalDateTime parsed = invokeParse("2025-10-20 08:30:00");
+
+            assertEquals(LocalDate.of(2025, 10, 20).atTime(8, 30), parsed);
+        }
+
+        @Test
+        @DisplayName("accepts ISO instant timestamps")
+        void acceptsIsoInstant() {
+            LocalDateTime parsed = invokeParse("2025-10-20T13:45:12Z");
+
+            assertEquals(LocalDateTime.ofInstant(Instant.parse("2025-10-20T13:45:12Z"), ZoneId.systemDefault()), parsed);
         }
 
         @Test

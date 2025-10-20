@@ -1,9 +1,9 @@
 # System Design Overview
 
 ## Caching Strategy
-- **Cache Provider Abstraction:** The `CacheProvider` interface in `src/BankingApplication.java` defines a contract for caching account profiles and balance lookups. The production default is `InMemoryCacheProvider`, while `RedisCacheProvider` illustrates how a Redis-backed implementation can be wired in.
-- **Cache Population:** The `Bank` aggregate owns cache lifecycle. Account mutations (create, deposit, withdraw, transfer, close, and interest accrual) refresh cache entries to keep balances and account snapshots in sync.
-- **Read Path:** Lookups (`Bank.getAccount` and `Bank.getAccountBalance`) consult the cache before touching the persistent map, reducing latency and enabling external cache deployments such as Redis.
+- **Cache Provider Abstraction:** `banking.cache.CacheProvider` encapsulates cache operations behind a minimal API so the runtime can swap implementations without touching business logic. `CacheProviderFactory` selects between the shipping `InMemoryCacheProvider` and the lightweight `NoOpCacheProvider` using the `CACHE_PROVIDER` environment variable (or `banking.cache.provider` system property).
+- **Cache Population:** The `Bank` aggregate owns cache lifecycle. Account mutations (create, deposit, withdraw, transfer, close, and interest accrual) refresh cache entries to keep balances and account snapshots in sync while cache eviction keeps stale entries out of rotation.
+- **Read Path:** Lookups (`Bank.getAccount` and `Bank.getAccountBalance`) consult the cache before touching the persistent map. TTLs default to five minutes and can be tuned per cache via `CACHE_ACCOUNT_TTL_SECONDS`, `CACHE_BALANCE_TTL_SECONDS`, or globally with `CACHE_TTL_SECONDS`.
 
 ## Asynchronous Transaction Processing
 - **Message Broker Abstraction:** `MessageBroker` decouples the command queue from execution. The default `InMemoryMessageBroker` runs operations on a worker pool, while the interface enables future adapters for Kafka or RabbitMQ.

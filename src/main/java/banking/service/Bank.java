@@ -5,6 +5,8 @@ import banking.account.AccountFactory;
 import banking.account.CurrentAccount;
 import banking.account.FixedDepositAccount;
 import banking.account.SavingsAccount;
+import banking.cache.CacheProvider;
+import banking.cache.CacheProviderFactory;
 import banking.report.AccountAnalyticsService;
 import banking.report.AnalyticsReport;
 import banking.report.AnalyticsReportOperation;
@@ -49,6 +51,8 @@ public class Bank implements AutoCloseable {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final Map<Integer, Account> accounts;
+    private final CacheProvider<Integer, Account> accountCache;
+    private final CacheProvider<Integer, Double> balanceCache;
     private final AccountRepository repository;
     private final Map<Integer, ReentrantLock> accountLocks;
     private transient List<AccountObserver> observers;
@@ -73,10 +77,21 @@ public class Bank implements AutoCloseable {
     private Bank(AccountRepository repository, Map<Integer, Account> seededAccounts) {
         this.repository = Objects.requireNonNull(repository, "repository");
         this.accounts = new HashMap<>(Objects.requireNonNull(seededAccounts, "seededAccounts"));
+        this.accountCache = CacheProviderFactory.accountCache();
+        this.balanceCache = CacheProviderFactory.balanceCache();
         this.accountLocks = new ConcurrentHashMap<>();
         initializeTransientState();
         for (Account account : this.accounts.values()) {
             accountLocks.putIfAbsent(account.getAccountNumber(), new ReentrantLock());
+            cacheAccount(account);
+        }
+
+        if (!this.accounts.isEmpty()) {
+            try {
+                this.repository.saveAccounts(this.accounts.values());
+            } catch (PersistenceException e) {
+                System.err.println("Failed to prime account repository from snapshot: " + e.getMessage());
+            }
         }
     }
 
@@ -84,6 +99,7 @@ public class Bank implements AutoCloseable {
         for (Account account : repository.findAllAccounts()) {
             accounts.put(account.getAccountNumber(), account);
             accountLocks.putIfAbsent(account.getAccountNumber(), new ReentrantLock());
+            cacheAccount(account);
         }
     }
 
@@ -113,6 +129,7 @@ public class Bank implements AutoCloseable {
         Account account = AccountFactory.createAccount(accountType, userName, accountNumber, initialDeposit);
         accounts.put(accountNumber, account);
         accountLocks.putIfAbsent(accountNumber, new ReentrantLock());
+        cacheAccount(account);
 
         try {
             repository.saveAccount(account);
@@ -122,6 +139,7 @@ public class Bank implements AutoCloseable {
         } catch (PersistenceException e) {
             accounts.remove(accountNumber);
             accountLocks.remove(accountNumber);
+            evictAccount(accountNumber);
             throw e;
         }
     }
@@ -129,10 +147,12 @@ public class Bank implements AutoCloseable {
     public synchronized boolean closeAccount(int accountNumber) {
         Account account = accounts.remove(accountNumber);
         if (account != null) {
+            evictAccount(accountNumber);
             try {
                 boolean deleted = repository.deleteAccount(accountNumber);
                 if (!deleted) {
                     accounts.put(accountNumber, account);
+                    cacheAccount(account);
                     return false;
                 }
                 accountLocks.remove(accountNumber);
@@ -140,6 +160,7 @@ public class Bank implements AutoCloseable {
                 return true;
             } catch (PersistenceException e) {
                 accounts.put(accountNumber, account);
+                cacheAccount(account);
                 throw e;
             }
         }
@@ -147,7 +168,14 @@ public class Bank implements AutoCloseable {
     }
 
     public synchronized boolean updateAccountHolderName(int accountNumber, String newName) {
-        Account account = accounts.get(accountNumber);
+        Account account = accountCache.get(accountNumber)
+                .orElseGet(() -> {
+                    Account found = accounts.get(accountNumber);
+                    if (found != null) {
+                        cacheAccount(found);
+                    }
+                    return found;
+                });
         if (account == null) {
             return false;
         }
@@ -155,6 +183,7 @@ public class Bank implements AutoCloseable {
         account.setUserName(newName);
         try {
             repository.saveAccount(account);
+            cacheAccount(account);
             notifyObservers("Account holder updated for account " + accountNumber + " to " + account.getUserName());
             return true;
         } catch (PersistenceException e) {
@@ -163,11 +192,30 @@ public class Bank implements AutoCloseable {
     }
 
     public synchronized Account getAccount(int accountNumber) {
-        return accounts.get(accountNumber);
+        return accountCache.get(accountNumber)
+                .orElseGet(() -> {
+                    Account account = accounts.get(accountNumber);
+                    if (account != null) {
+                        cacheAccount(account);
+                    }
+                    return account;
+                });
     }
 
     public synchronized List<Account> getAllAccounts() {
         return new ArrayList<>(accounts.values());
+    }
+
+    public synchronized double getAccountBalance(int accountNumber) {
+        return balanceCache.get(accountNumber)
+                .orElseGet(() -> {
+                    Account account = accounts.get(accountNumber);
+                    if (account == null) {
+                        throw new IllegalArgumentException("Account not found: " + accountNumber);
+                    }
+                    cacheAccount(account);
+                    return account.getBalance();
+                });
     }
 
     public synchronized int getPendingOperationCount() {
@@ -319,6 +367,7 @@ public class Bank implements AutoCloseable {
             if (account instanceof SavingsAccount || account instanceof FixedDepositAccount) {
                 account.addInterest();
                 updatedAccounts.add(account);
+                cacheAccount(account);
             }
         }
 
@@ -400,8 +449,23 @@ public class Bank implements AutoCloseable {
             for (Account account : updatedAccounts) {
                 accounts.put(account.getAccountNumber(), account);
                 accountLocks.computeIfAbsent(account.getAccountNumber(), key -> new ReentrantLock());
+                cacheAccount(account);
             }
         }
+    }
+
+    private void cacheAccount(Account account) {
+        if (account == null) {
+            return;
+        }
+        int accountNumber = account.getAccountNumber();
+        accountCache.put(accountNumber, account);
+        balanceCache.put(accountNumber, account.getBalance());
+    }
+
+    private void evictAccount(int accountNumber) {
+        accountCache.invalidate(accountNumber);
+        balanceCache.invalidate(accountNumber);
     }
 
     private void notifyObservers(String message) {
