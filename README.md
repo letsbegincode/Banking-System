@@ -2,6 +2,10 @@
 
 A modular Java banking platform that simulates common retail banking flows such as onboarding customers, managing multi-type accounts, and executing money-movement operations with audit trails. The system prioritizes correctness, extensibility, and an operator-friendly console experience.
 
+## Documentation Hub
+- Browse the curated knowledge base in the [project wiki](wiki/Home.md) for quick-start guides, architecture summaries, operations runbooks, and troubleshooting tips.
+- Detailed reference material continues to live under the [`docs/`](docs) directory for deep dives into specific subsystems.
+
 ## Product Summary
 - **Customers & Accounts:** Create Savings, Current, and Fixed Deposit accounts with configurable rules, interest accrual, and account lifecycle management.
 - **Transaction Processing:** Queue-backed execution of deposits, withdrawals, transfers, and interest postings with transaction history retention.
