@@ -4,6 +4,7 @@ import banking.snapshot.AccountSnapshot;
 import banking.snapshot.BankSnapshot;
 import banking.snapshot.TransactionSnapshot;
 import banking.snapshot.TransactionType;
+import banking.util.DateTimeParsers;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -13,11 +14,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -184,35 +181,7 @@ public final class JdbcBankRepository implements BankRepository {
     }
 
     private static LocalDateTime parseCreationDate(String creationDateStr) {
-        if (creationDateStr == null || creationDateStr.isBlank()) {
-            return LocalDateTime.now();
-        }
-
-        String trimmed = creationDateStr.trim();
-
-        try {
-            // Account creation dates are typically stored as ISO local dates (yyyy-MM-dd).
-            // Parsing them first avoids propagating parse exceptions from
-            // LocalDateTime.parse when no time component is present.
-            return LocalDate.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE).atStartOfDay();
-        } catch (DateTimeParseException ignored) {
-            // fall through to other strategies
-        }
-
-        try {
-            return LocalDateTime.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-        } catch (DateTimeParseException ignored) {
-            // continue to other strategies below
-        }
-
-        // Handle timestamps persisted with a trailing zone designator (e.g. ...Z).
-        try {
-            return LocalDateTime.ofInstant(Instant.parse(trimmed), ZoneId.systemDefault());
-        } catch (DateTimeParseException ignored) {
-            // fall through to error
-        }
-
-        throw new IllegalArgumentException("Unsupported creation date format: " + creationDateStr);
+        return DateTimeParsers.parseAccountCreationDate(creationDateStr);
     }
 
     private static LocalDateTime toLocalDateTime(Timestamp timestamp) {
