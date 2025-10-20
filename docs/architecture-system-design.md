@@ -26,6 +26,8 @@ package "Infrastructure" {
   [AccountRepository]
   [JdbcAccountRepository]
   [InMemoryAccountRepository]
+  [CacheProvider]
+  [CacheProviderFactory]
   [MigrationRunner]
   [Operation Queue]
   [ExecutorService]
@@ -42,6 +44,8 @@ package "Infrastructure" {
 [Bank] --> [AccountRepository]
 [AccountRepository] <|-- [JdbcAccountRepository]
 [AccountRepository] <|-- [InMemoryAccountRepository]
+[CacheProviderFactory] --> [CacheProvider]
+[Bank] --> [CacheProvider]
 [MigrationRunner] --> [JdbcAccountRepository]
 [JdbcAccountRepository] --> [Relational Store]
 @enduml
@@ -51,7 +55,7 @@ package "Infrastructure" {
 1. Operators initiate actions from the CLI. Inputs are validated and mapped to command objects.
 2. Commands are enqueued via `Bank.queueOperation` and drained through the `ExecutorService`, keeping the console responsive while operations run asynchronously against the target `Account` instances.
 3. Each mutation appends a `BaseTransaction` record, enabling audit trails and replay.
-4. Persistence writes the mutated bank aggregate to `banking_state.properties`. Startup reads the snapshot back into memory.
+4. The cache is updated with fresh account snapshots before persistence writes the mutated bank aggregate to `banking_state.properties` or the configured repository. Startup reads the snapshot back into memory and warms the cache using the restored accounts.
 5. Observers emit feedback to the console and structured logs for operators.
 
 ```mermaid
@@ -71,6 +75,7 @@ flowchart LR
 ## Scalability Considerations
 - **Thread Pool Sizing:** The executor currently uses a fixed thread pool. Increase the pool or migrate to a work-stealing pool when adding high-volume batch jobs.
 - **External Storage:** Enable the JDBC repository with a managed database (PostgreSQL, MySQL, H2 for demos) to support concurrent clients and reporting workloads. Additional tables and migrations can be layered on incrementally.
+- **Cache Configuration:** Tune cache usage through environment variables or JVM properties: `CACHE_PROVIDER` toggles between in-memory caching (`memory`) and the shipped no-op adapter (`none`), while TTLs default to five minutes and can be overridden globally with `CACHE_TTL_SECONDS` or per cache (`CACHE_ACCOUNT_TTL_SECONDS`, `CACHE_BALANCE_TTL_SECONDS`). External caches (e.g., Redis) can be introduced by implementing `CacheProvider`.
 - **Service Interfaces:** Wrap the domain layer in REST or gRPC endpoints to support distributed user interfaces and automation.
 - **Horizontal Scale:** Once stateless adapters exist, run multiple instances behind a load balancer and rely on the shared database for consistency.
 

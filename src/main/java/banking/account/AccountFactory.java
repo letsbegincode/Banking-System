@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import banking.util.DateTimeParsers;
+
 public final class AccountFactory {
     private AccountFactory() {
     }
@@ -56,7 +58,7 @@ public final class AccountFactory {
             case "FIXED_DEPOSIT" -> {
                 int termMonths = snapshot.termMonths() != null ? snapshot.termMonths() : 12;
                 String maturityDate = snapshot.maturityDate();
-                LocalDateTime maturity = maturityDate != null ? LocalDateTime.parse(maturityDate)
+                LocalDateTime maturity = maturityDate != null ? DateTimeParsers.parseTransactionTimestamp(maturityDate)
                         : LocalDateTime.now().plusMonths(termMonths);
                 return new FixedDepositAccount(snapshot.userName(), snapshot.accountNumber(), snapshot.creationDate(),
                         snapshot.balance(), termMonths, maturity, transactions);
