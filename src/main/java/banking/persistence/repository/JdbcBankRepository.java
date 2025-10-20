@@ -190,11 +190,13 @@ public final class JdbcBankRepository implements BankRepository {
 
         String trimmed = creationDateStr.trim();
 
-        // Account creation dates are stored as ISO local dates (yyyy-MM-dd). Handle the
-        // simple case first to avoid parse exceptions propagating from
-        // LocalDateTime.parse on strings without a time component.
-        if (trimmed.length() == 10 && trimmed.charAt(4) == '-' && trimmed.charAt(7) == '-') {
+        try {
+            // Account creation dates are typically stored as ISO local dates (yyyy-MM-dd).
+            // Parsing them first avoids propagating parse exceptions from
+            // LocalDateTime.parse when no time component is present.
             return LocalDate.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE).atStartOfDay();
+        } catch (DateTimeParseException ignored) {
+            // fall through to other strategies
         }
 
         try {
