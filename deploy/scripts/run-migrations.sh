@@ -4,8 +4,8 @@ set -euo pipefail
 JAVA_BIN="${JAVA_BIN:-java}"
 
 if [[ -z "${BANKING_JDBC_URL:-}" ]]; then
-  echo "[migrate] BANKING_JDBC_URL must be set for JDBC migrations" >&2
-  exit 1
+  echo "[migrate] BANKING_JDBC_URL not set; skipping JDBC migrations" >&2
+  exit 0
 fi
 
 export BANKING_STORAGE_MODE="${BANKING_STORAGE_MODE:-jdbc}"
