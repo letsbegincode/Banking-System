@@ -15,7 +15,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -127,20 +127,8 @@ public final class JdbcBankRepository implements BankRepository {
                     insertAccount.setDouble(4, account.balance());
 
                     // Robust parsing: accept full date-time or date-only (yyyy-MM-dd).
-                    String creationDateStr = account.creationDate();
-                    LocalDateTime creation;
-                    if (creationDateStr == null || creationDateStr.isBlank()) {
-                        creation = LocalDateTime.now();
-                    } else {
-                        try {
-                            creation = LocalDateTime.parse(creationDateStr);
-                        } catch (DateTimeParseException ex) {
-                            // fallback to date-only format
-                            creation = LocalDate.parse(creationDateStr, DateTimeFormatter.ISO_LOCAL_DATE)
-                                    .atStartOfDay();
-                        }
-                    }
-                    insertAccount.setTimestamp(5, Timestamp.from(creation.toInstant(ZoneOffset.UTC)));
+                    LocalDateTime creation = parseCreationDate(account.creationDate());
+                    insertAccount.setTimestamp(5, Timestamp.valueOf(creation));
 
                     if (account.minimumBalance() != null) {
                         insertAccount.setDouble(6, account.minimumBalance());
@@ -195,11 +183,41 @@ public final class JdbcBankRepository implements BankRepository {
         }
     }
 
+    private static LocalDateTime parseCreationDate(String creationDateStr) {
+        if (creationDateStr == null || creationDateStr.isBlank()) {
+            return LocalDateTime.now();
+        }
+
+        String trimmed = creationDateStr.trim();
+
+        // Account creation dates are stored as ISO local dates (yyyy-MM-dd). Handle the
+        // simple case first to avoid parse exceptions propagating from
+        // LocalDateTime.parse on strings without a time component.
+        if (trimmed.length() == 10 && trimmed.charAt(4) == '-' && trimmed.charAt(7) == '-') {
+            return LocalDate.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE).atStartOfDay();
+        }
+
+        try {
+            return LocalDateTime.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        } catch (DateTimeParseException ignored) {
+            // continue to other strategies below
+        }
+
+        // Handle timestamps persisted with a trailing zone designator (e.g. ...Z).
+        try {
+            return LocalDateTime.ofInstant(Instant.parse(trimmed), ZoneId.systemDefault());
+        } catch (DateTimeParseException ignored) {
+            // fall through to error
+        }
+
+        throw new IllegalArgumentException("Unsupported creation date format: " + creationDateStr);
+    }
+
     private static LocalDateTime toLocalDateTime(Timestamp timestamp) {
         if (timestamp == null) {
             return LocalDateTime.now();
         }
-        return timestamp.toInstant().atZone(ZoneOffset.UTC).toLocalDateTime();
+        return timestamp.toLocalDateTime();
     }
 
     private static Double nullableDouble(ResultSet rs, String column) throws SQLException {
