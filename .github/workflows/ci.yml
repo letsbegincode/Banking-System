@@ -46,10 +46,54 @@ jobs:
         run: java -cp build/classes banking.test.PersistenceSmokeTest
 
       - name: Build console container image
-        run: docker build -f deploy/Dockerfile.console -t banking-console:ci .
+        run: |
+          retry_docker_build() {
+            local attempts="$1"
+            shift
+            local try=1
+            local status=0
+            while [ "$try" -le "$attempts" ]; do
+              echo "Attempt ${try}/${attempts}: docker build $*"
+              if docker build "$@"; then
+                return 0
+              fi
+              status=$?
+              if [ "$try" -lt "$attempts" ]; then
+                local backoff=$((try * 5))
+                echo "docker build failed with status ${status}; retrying in ${backoff}s" >&2
+                sleep "$backoff"
+              fi
+              try=$((try + 1))
+            done
+            return $status
+          }
+
+          retry_docker_build 3 -f deploy/Dockerfile.console -t banking-console:ci .
 
       - name: Build API container image
-        run: docker build -f deploy/Dockerfile.api -t banking-api:ci .
+        run: |
+          retry_docker_build() {
+            local attempts="$1"
+            shift
+            local try=1
+            local status=0
+            while [ "$try" -le "$attempts" ]; do
+              echo "Attempt ${try}/${attempts}: docker build $*"
+              if docker build "$@"; then
+                return 0
+              fi
+              status=$?
+              if [ "$try" -lt "$attempts" ]; then
+                local backoff=$((try * 5))
+                echo "docker build failed with status ${status}; retrying in ${backoff}s" >&2
+                sleep "$backoff"
+              fi
+              try=$((try + 1))
+            done
+            return $status
+          }
+
+          retry_docker_build 3 -f deploy/Dockerfile.api -t banking-api:ci .
 
       - name: Smoke test API container
         env:
