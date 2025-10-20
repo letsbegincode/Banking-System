@@ -9,9 +9,6 @@ public class InterestTransaction extends BaseTransaction {
         super(amount);
     }
 
-    public InterestTransaction(double amount, java.time.LocalDateTime timestamp, String transactionId) {
-        super(amount, timestamp, transactionId);
-
     public InterestTransaction(double amount, String transactionId, LocalDateTime timestamp) {
         super(amount, transactionId, timestamp);
     }

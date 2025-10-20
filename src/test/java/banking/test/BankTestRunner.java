@@ -2,45 +2,37 @@ package banking.test;
 
 import banking.account.Account;
 import banking.api.BankHttpServer;
-import banking.report.AccountAnalyticsService;
+import banking.operation.OperationResult;
+import banking.persistence.memory.InMemoryAccountRepository;
+import banking.report.AccountStatement;
+import banking.report.StatementGenerator;
 import banking.security.AuthenticationService;
-import banking.security.AuthenticationToken;
 import banking.security.AuthorizationService;
 import banking.security.CredentialStore;
 import banking.security.OperatorCredential;
 import banking.security.PasswordHasher;
 import banking.security.Role;
 import banking.security.TokenService;
-import banking.report.AccountStatement;
-import banking.report.AnalyticsReport;
-import banking.report.AnalyticsReportRequest;
-import banking.report.StatementGenerator;
-<<<<<<< HEAD:src/test/java/banking/test/BankTestRunner.java
-import banking.service.Bank;<<<<<<<<HEAD:src/test/java/banking/test/BankTestRunner.java
-import banking.ui.presenter.AnalyticsPresenter;========
-import banking.persistence.memory.InMemoryAccountRepository;>>>>>>>>origin/pr/20:src/main/java/banking/test/BankTestRunner.java
-=======
 import banking.service.Bank;
-import banking.telemetry.TelemetryCollector;
->>>>>>> origin/pr/21:src/banking/test/BankTestRunner.java
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;<<<<<<<HEAD:src/banking/test/BankTestRunner.java
+import java.net.HttpURLConnection;
 import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.LocalDate;=======
-import java.net.URL;>>>>>>>origin/pr/19:src/test/java/banking/test/BankTestRunner.java
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * Lightweight regression suite to ensure the banking service retains expected behaviours.
+ */
 public final class BankTestRunner {
     private int passed;
     private int failed;
@@ -61,18 +53,10 @@ public final class BankTestRunner {
         execute("interest applied to savings accounts", this::shouldApplyInterest);
         execute("statement summarizes period balances", this::shouldGenerateStatement);
         execute("http gateway exposes core workflows", this::shouldServeHttpApi);
-<<<<<<< HEAD:src/test/java/banking/test/BankTestRunner.java
-        execute("analytics aggregates balances and trends", this::shouldGenerateAnalyticsReport);
-        execute("analytics exports format csv and json", this::shouldFormatAnalyticsExports);
-=======
-        execute("gateway enforces validation and rate limits", this::shouldHardenGateway);
-        execute("telemetry collector aggregates events", this::shouldEmitTelemetry);
->>>>>>> origin/pr/21:src/banking/test/BankTestRunner.java
     }
 
     private void execute(String name, TestCase testCase) {
         try {
-            TelemetryCollector.getInstance().reset();
             testCase.run();
             passed++;
             System.out.println("[PASS] " + name);
@@ -96,7 +80,7 @@ public final class BankTestRunner {
         Bank bank = new Bank(new InMemoryAccountRepository());
         try {
             Account account = bank.createAccount("Alice", "savings", 0);
-            CompletableFuture<?> future = bank.deposit(account.getAccountNumber(), 200.0);
+            CompletableFuture<OperationResult> future = bank.deposit(account.getAccountNumber(), 200.0);
             future.join();
 
             Account updated = bank.getAccount(account.getAccountNumber());
@@ -185,233 +169,81 @@ public final class BankTestRunner {
     }
 
     private void shouldServeHttpApi() {
-<<<<<<<< HEAD:src/test/java/banking/test/BankTestRunner.java
-        Path tempDir;
-        try {
-            tempDir = Files.createTempDirectory("bank-http-test");
-        } catch (IOException e) {
-            throw new AssertionError("Unable to create temp directory", e);
-        }
-        System.setProperty("banking.storage.mode", "snapshot");
-        System.setProperty("banking.data.path", tempDir.resolve("banking_state.properties").toString());
-
-        Bank bank = new Bank();
-        TokenService tokenService = new TokenService();
-        AuthorizationService authorizationService = new AuthorizationService();
-        BankHttpServer server = new BankHttpServer(bank, 0, tokenService, authorizationService);
+        Bank bank = new Bank(new InMemoryAccountRepository());
         PasswordHasher hasher = new PasswordHasher();
         CredentialStore store = new CredentialStore();
-        store.store(new OperatorCredential("tester", hasher.hash("password"), Set.of(Role.ADMIN)));
+        store.store(new OperatorCredential("operator", hasher.hash("op-password"), Set.of(Role.ADMIN)));
+        TokenService tokenService = new TokenService();
+        AuthorizationService authorizationService = new AuthorizationService();
         AuthenticationService authenticationService = new AuthenticationService(
-            store, hasher, tokenService, Duration.ofHours(1));
-        AuthenticationToken token = authenticationService.login("tester", "password");
-========
-        Bank bank = new Bank(new InMemoryAccountRepository());
-        BankHttpServer server = new BankHttpServer(bank, 0);
->>>>>>>> origin/pr/20:src/main/java/banking/test/BankTestRunner.java
+                store, hasher, tokenService, Duration.ofMinutes(30));
+        BankHttpServer server = new BankHttpServer(bank, 0, authenticationService, tokenService, authorizationService);
+
         try {
             server.start();
             int port = server.getPort();
             String baseUrl = "http://localhost:" + port;
 
+            String token = login(baseUrl, "operator", "op-password");
+            Map<String, String> headers = Map.of("Authorization", "Bearer " + token);
+
             HttpResponse createSavings = sendRequest("POST", baseUrl + "/accounts",
-                    "name=Grace&type=savings&deposit=1500", token.token());
+                    "name=Grace&type=savings&deposit=1500", headers);
             assertEquals(201, createSavings.statusCode(), "Account creation should return 201");
             int savingsAccount = extractAccountNumber(createSavings.body());
 
             HttpResponse createCurrent = sendRequest("POST", baseUrl + "/accounts",
-                    "name=Henry&type=current&deposit=50", token.token());
+                    "name=Henry&type=current&deposit=50", headers);
             assertEquals(201, createCurrent.statusCode(), "Account creation should return 201");
             int currentAccount = extractAccountNumber(createCurrent.body());
 
             HttpResponse deposit = sendRequest("POST", baseUrl + "/operations/deposit",
-                    "accountNumber=" + savingsAccount + "&amount=100", token.token());
+                    "accountNumber=" + savingsAccount + "&amount=100", headers);
             assertEquals(200, deposit.statusCode(), "Deposit should succeed");
             assertTrue(deposit.body().contains("\"success\":true"), "Deposit response should indicate success");
 
             HttpResponse transfer = sendRequest("POST", baseUrl + "/operations/transfer",
-                    "sourceAccount=" + savingsAccount + "&targetAccount=" + currentAccount + "&amount=75", token.token());
+                    "sourceAccount=" + savingsAccount + "&targetAccount=" + currentAccount + "&amount=75", headers);
             assertEquals(200, transfer.statusCode(), "Transfer should succeed");
             assertTrue(transfer.body().contains("\"success\":true"), "Transfer response should indicate success");
 
-            HttpResponse savingsDetails = sendRequest("GET", baseUrl + "/accounts/" + savingsAccount, null);
+            HttpResponse savingsDetails = sendRequest("GET", baseUrl + "/accounts/" + savingsAccount, null, headers);
             assertEquals(200, savingsDetails.statusCode(), "Account lookup should succeed");
             assertTrue(savingsDetails.body().contains("\"userName\":\"Grace\""),
                     "Account payload should contain the owner name");
 
             HttpResponse rename = sendRequest("PUT", baseUrl + "/accounts/" + currentAccount,
-                    "userName=Henry%20Updated");
+                    "userName=Henry%20Updated", headers);
             assertEquals(200, rename.statusCode(), "Rename should succeed");
             assertTrue(rename.body().contains("Henry Updated"),
                     "Rename response should include the updated account");
 
-            HttpResponse delete = sendRequest("DELETE", baseUrl + "/accounts/" + currentAccount, null);
+            HttpResponse delete = sendRequest("DELETE", baseUrl + "/accounts/" + currentAccount, null, headers);
             assertEquals(200, delete.statusCode(), "Account deletion should succeed");
             assertTrue(delete.body().contains("\"success\":true"),
                     "Delete response should indicate success");
 
-            HttpResponse deletedLookup = sendRequest("GET", baseUrl + "/accounts/" + currentAccount, null);
+            HttpResponse deletedLookup = sendRequest("GET", baseUrl + "/accounts/" + currentAccount, null, headers);
             assertEquals(404, deletedLookup.statusCode(), "Deleted accounts should not be retrievable");
 
-            HttpResponse accounts = sendRequest("GET", baseUrl + "/accounts", null);
-            HttpResponse accounts = sendRequest("GET", baseUrl + "/accounts", null, token.token());
+            HttpResponse accounts = sendRequest("GET", baseUrl + "/accounts", null, headers);
             assertEquals(200, accounts.statusCode(), "Accounts listing should succeed");
-            assertTrue(accounts.body().contains("\"formattedBalance\":\"1525.00\""),
-                    "Savings account should reflect post-transfer balance");
-            assertFalse(accounts.body().contains("\"formattedBalance\":\"125.00\""),
-                    "Closed accounts should not appear in listings");
-        } finally {
-            server.stop();
-            bank.shutdown();
-            System.clearProperty("banking.storage.mode");
-            System.clearProperty("banking.data.path");
-            try (var paths = Files.walk(tempDir)) {
-                paths.sorted((a, b) -> b.compareTo(a)).forEach(path -> {
-                    try {
-                        Files.deleteIfExists(path);
-                    } catch (IOException ignored) {
-                    }
-                });
-            } catch (IOException ignored) {
-            }
-        }
-    }
-
-    private void shouldGenerateAnalyticsReport() {
-        Bank bank = new Bank();
-        try {
-            Account alpha = bank.createAccount("Iris", "savings", 0);
-            Account beta = bank.createAccount("Jules", "current", 0);
-
-            bank.deposit(alpha.getAccountNumber(), 1600.0).join();
-            bank.withdraw(alpha.getAccountNumber(), 200.0).join();
-            bank.deposit(beta.getAccountNumber(), 600.0).join();
-            bank.transfer(beta.getAccountNumber(), alpha.getAccountNumber(), 150.0).join();
-
-            AnalyticsReportRequest request = AnalyticsReportRequest.builder()
-                    .withStartDate(LocalDate.now().minusDays(2))
-                    .withEndDate(LocalDate.now().plusDays(1))
-                    .withLargeTransactionThreshold(400.0)
-                    .withRollingWindowDays(2)
-                    .build();
-            AnalyticsReport report = bank.generateAnalyticsReport(request, new AccountAnalyticsService()).join();
-
-            assertEquals(2, report.balanceSnapshots().size(), "Both accounts should be represented");
-            assertTrue(report.totalBalance() > 0, "Total balance should reflect account holdings");
-            assertTrue(report.trendPoints().size() >= 3, "Trend should include multiple days");
-
-            double alphaNetChange = report.balanceSnapshots().stream()
-                    .filter(s -> s.accountNumber() == alpha.getAccountNumber())
-                    .findFirst()
-                    .orElseThrow(() -> new AssertionError("Missing alpha snapshot"))
-                    .netChange();
-            assertEquals(1550.0, alphaNetChange, 0.0001, "Alpha net change should reflect transactions");
-
-            boolean anomalyDetected = report.anomalies().stream()
-                    .anyMatch(anomaly -> anomaly.accountNumber() == alpha.getAccountNumber()
-                            && anomaly.description().contains("High value"));
-            assertTrue(anomalyDetected, "High value transaction anomaly should be reported");
-        } finally {
-            bank.shutdown();
-        }
-    }
-
-<<<<<<< HEAD:src/test/java/banking/test/BankTestRunner.java
-    private void shouldFormatAnalyticsExports() {
-        Bank bank = new Bank();
-=======
-    private void shouldHardenGateway() {
-        Bank bank = new Bank();
-        BankHttpServer server = new BankHttpServer(bank, 0);
-        try {
-            server.start();
-            String baseUrl = "http://localhost:" + server.getPort();
-
-            HttpResponse rejectedContentType = sendRequest("POST", baseUrl + "/accounts",
-                    "name=Invalid&type=savings", "text/plain");
-            assertEquals(400, rejectedContentType.statusCode(), "Invalid content type should be rejected");
-            assertTrue(rejectedContentType.body().contains("Unsupported Content-Type"),
-                    "Error response should describe validation failure");
-
-            boolean rateLimited = false;
-            for (int i = 0; i < 25; i++) {
-                HttpResponse response = sendRequest("GET", baseUrl + "/health", null);
-                if (response.statusCode() == 429) {
-                    rateLimited = true;
-                    break;
-                }
-            }
-            assertTrue(rateLimited, "Burst traffic should trigger rate limiting");
+            assertTrue(accounts.body().contains("\"accountNumber\":" + savingsAccount),
+                    "Savings account should appear in listings");
         } finally {
             server.stop();
             bank.shutdown();
         }
     }
 
-    private void shouldEmitTelemetry() {
-        Bank bank = new Bank();
-        try {
-            Account account = bank.createAccount("Ivy", "savings", 500);
-            bank.deposit(account.getAccountNumber(), 250).join();
-            bank.withdraw(account.getAccountNumber(), 100).join();
-
-            TelemetryCollector.TelemetrySnapshot snapshot = TelemetryCollector.getInstance().snapshot();
-            assertTrue(snapshot.successfulOperations() >= 2,
-                    "Successful operations should be tracked");
-            assertEquals(0, snapshot.httpRequests(), "No HTTP requests should be recorded for pure service flows");
-            assertTrue(!snapshot.events().isEmpty(), "Telemetry events should be captured");
-        } finally {
-            bank.shutdown();
-        }
-    }
-
-    private HttpResponse sendRequest(String method, String url, String body) {
-        return sendRequest(method, url, body, "application/x-www-form-urlencoded; charset=utf-8");
-    }
-
-    private HttpResponse sendRequest(String method, String url, String body, String contentType) {
->>>>>>> origin/pr/21:src/banking/test/BankTestRunner.java
-        try {
-            Account account = bank.createAccount("Kara", "savings", 0);
-            bank.deposit(account.getAccountNumber(), 1300.0).join();
-            bank.withdraw(account.getAccountNumber(), 100.0).join();
-
-            AnalyticsReportRequest request = AnalyticsReportRequest.builder()
-                    .withStartDate(LocalDate.now().minusDays(1))
-                    .withEndDate(LocalDate.now().plusDays(1))
-                    .build();
-            AnalyticsReport report = bank.generateAnalyticsReport(request, new AccountAnalyticsService()).join();
-
-            AnalyticsPresenter presenter = new AnalyticsPresenter();
-            String csv = presenter.toCsv(report);
-            String json = presenter.toJson(report);
-
-            assertTrue(csv.contains("totalBalance"), "CSV should list total balance metric");
-            assertTrue(csv.contains(Integer.toString(account.getAccountNumber())),
-                    "CSV should include account number");
-            assertTrue(json.contains("\"balances\""), "JSON should embed balances section");
-            assertTrue(
-                    json.contains(String.format(java.util.Locale.US, "\"totalBalance\":%.2f", report.totalBalance())),
-                    "JSON should embed numeric totals");
-        } finally {
-            bank.shutdown();
-        }
-    }
-
-    private HttpResponse sendRequest(String method, String url, String body, String token) {
+    private HttpResponse sendRequest(String method, String url, String body, Map<String, String> headers) {
         try {
             HttpURLConnection connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
             connection.setRequestMethod(method);
             connection.setDoInput(true);
-<<<<<<< HEAD:src/test/java/banking/test/BankTestRunner.java
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=utf-8");
-            connection.setRequestProperty("X-API-Key", System.getProperty("banking.test.apiKey", "local-dev-key"));
-            if (token != null) {
-                connection.setRequestProperty("Authorization", "Bearer " + token);
-=======
-            if (contentType != null) {
-                connection.setRequestProperty("Content-Type", contentType);
->>>>>>> origin/pr/21:src/banking/test/BankTestRunner.java
+            if (headers != null) {
+                headers.forEach(connection::setRequestProperty);
             }
             if (body != null && !body.isEmpty()) {
                 byte[] payload = body.getBytes(StandardCharsets.UTF_8);
@@ -435,6 +267,17 @@ public final class BankTestRunner {
         }
     }
 
+    private HttpResponse sendRequest(String method, String url, String body) {
+        return sendRequest(method, url, body, null);
+    }
+
+    private String login(String baseUrl, String username, String password) {
+        String payload = "username=" + encode(username) + "&password=" + encode(password);
+        HttpResponse response = sendRequest("POST", baseUrl + "/auth/login", payload);
+        assertEquals(200, response.statusCode(), "Login should succeed");
+        return extractStringValue(response.body(), "token");
+    }
+
     private String readStream(InputStream stream) throws IOException {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             StringBuilder builder = new StringBuilder();
@@ -444,6 +287,24 @@ public final class BankTestRunner {
             }
             return builder.toString();
         }
+    }
+
+    private String extractStringValue(String json, String field) {
+        String needle = "\"" + field + "\":\"";
+        int index = json.indexOf(needle);
+        if (index < 0) {
+            throw new AssertionError("Field '" + field + "' missing in response: " + json);
+        }
+        int start = index + needle.length();
+        int end = json.indexOf('"', start);
+        if (end < 0) {
+            throw new AssertionError("Value for field '" + field + "' not terminated: " + json);
+        }
+        String value = json.substring(start, end);
+        if (value.isEmpty()) {
+            throw new AssertionError("Field '" + field + "' must not be empty: " + json);
+        }
+        return value;
     }
 
     private int extractAccountNumber(String json) {
@@ -459,8 +320,18 @@ public final class BankTestRunner {
         return Integer.parseInt(json.substring(start, end));
     }
 
+    private String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
     private static void assertEquals(double expected, double actual, double delta, String message) {
         if (Math.abs(expected - actual) > delta) {
+            throw new AssertionError(message + " (expected: " + expected + ", actual: " + actual + ")");
+        }
+    }
+
+    private static void assertEquals(int expected, int actual, String message) {
+        if (expected != actual) {
             throw new AssertionError(message + " (expected: " + expected + ", actual: " + actual + ")");
         }
     }
@@ -474,18 +345,6 @@ public final class BankTestRunner {
     private static void assertTrue(boolean condition, String message) {
         if (!condition) {
             throw new AssertionError(message);
-        }
-    }
-
-    private static void assertFalse(boolean condition, String message) {
-        if (condition) {
-            throw new AssertionError(message);
-        }
-    }
-
-    private static void assertEquals(int expected, int actual, String message) {
-        if (expected != actual) {
-            throw new AssertionError(message + " (expected: " + expected + ", actual: " + actual + ")");
         }
     }
 

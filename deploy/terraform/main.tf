@@ -29,7 +29,6 @@ resource "kubernetes_secret" "banking_config" {
   data = {
     BANKING_DB_USER     = base64encode(var.db_username)
     BANKING_DB_PASSWORD = base64encode(var.db_password)
-    BANKING_API_KEY     = base64encode(var.api_key)
   }
 }
 
@@ -104,17 +103,6 @@ resource "kubernetes_deployment" "api" {
             }
           }
 
-          env {
-            name = "BANKING_API_KEY"
-
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret.banking_config.metadata[0].name
-                key  = "BANKING_API_KEY"
-              }
-            }
-          }
-
           resources {
             limits = var.api_resources.limits
             requests = var.api_resources.requests
@@ -122,7 +110,7 @@ resource "kubernetes_deployment" "api" {
 
           readiness_probe {
             http_get {
-              path = "/healthz"
+              path = "/health"
               port = 8080
             }
 
@@ -132,7 +120,7 @@ resource "kubernetes_deployment" "api" {
 
           liveness_probe {
             http_get {
-              path = "/healthz"
+              path = "/health"
               port = 8080
             }
 

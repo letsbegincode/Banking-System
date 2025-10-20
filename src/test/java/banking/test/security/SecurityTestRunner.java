@@ -90,8 +90,12 @@ public final class SecurityTestRunner {
 
     private void shouldRequireTokenForApi() {
         Bank bank = new Bank();
+        PasswordHasher hasher = new PasswordHasher();
+        CredentialStore store = new CredentialStore();
+        store.store(new OperatorCredential("operator", hasher.hash("password"), Set.of(Role.ADMIN)));
         TokenService tokens = new TokenService();
-        BankHttpServer server = new BankHttpServer(bank, 0, tokens, new AuthorizationService());
+        AuthenticationService authentication = new AuthenticationService(store, hasher, tokens, Duration.ofMinutes(5));
+        BankHttpServer server = new BankHttpServer(bank, 0, authentication, tokens, new AuthorizationService());
         try {
             server.start();
             HttpResponse response = sendRequest("GET", "http://localhost:" + server.getPort() + "/health", null, null);
@@ -107,11 +111,11 @@ public final class SecurityTestRunner {
         Account account = bank.createAccount("Secured", "savings", 100);
         TokenService tokens = new TokenService();
         AuthorizationService authorization = new AuthorizationService();
-        BankHttpServer server = new BankHttpServer(bank, 0, tokens, authorization);
         PasswordHasher hasher = new PasswordHasher();
         CredentialStore store = new CredentialStore();
         store.store(new OperatorCredential("auditor", hasher.hash("audit"), Set.of(Role.AUDITOR)));
         AuthenticationService auth = new AuthenticationService(store, hasher, tokens, Duration.ofMinutes(5));
+        BankHttpServer server = new BankHttpServer(bank, 0, auth, tokens, authorization);
         AuthenticationToken token = auth.login("auditor", "audit");
         try {
             server.start();

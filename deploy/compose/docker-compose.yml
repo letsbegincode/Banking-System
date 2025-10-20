@@ -47,7 +47,6 @@ services:
       BANKING_JDBC_URL: jdbc:mysql://mysql:3306/banking?useSSL=false&serverTimezone=UTC
       BANKING_DB_USER: bank_user
       BANKING_DB_PASSWORD: ChangeMe123!
-      BANKING_API_KEY: compose-dev-key
       BANKING_API_PORT: "8080"
     ports:
       - "8080:8080"

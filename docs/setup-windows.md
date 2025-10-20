@@ -64,18 +64,16 @@ cd Banking-System
 If your organization uses Git over HTTPS with personal access tokens, replace `<your-org>` and provide credentials when prompted.
 
 ## 4. Prepare Environment Variables
-Configure the runtime to use the MySQL instance created earlier and register an API key for local testing:
+Configure the runtime to use the MySQL instance created earlier:
 ```powershell
 $env:BANKING_STORAGE_MODE = "jdbc"
 $env:BANKING_JDBC_URL = "jdbc:mysql://localhost:3306/banking?useSSL=true&requireSSL=false&serverTimezone=UTC"
 $env:BANKING_DB_USER = "bank_user"
 $env:BANKING_DB_PASSWORD = "ChangeMe123!"
-$env:BANKING_API_KEY = "local-dev-key"
 [Environment]::SetEnvironmentVariable("BANKING_STORAGE_MODE", $env:BANKING_STORAGE_MODE, "User")
 [Environment]::SetEnvironmentVariable("BANKING_JDBC_URL", $env:BANKING_JDBC_URL, "User")
 [Environment]::SetEnvironmentVariable("BANKING_DB_USER", $env:BANKING_DB_USER, "User")
 [Environment]::SetEnvironmentVariable("BANKING_DB_PASSWORD", $env:BANKING_DB_PASSWORD, "User")
-[Environment]::SetEnvironmentVariable("BANKING_API_KEY", $env:BANKING_API_KEY, "User")
 ```
 Persisting these values ensures new PowerShell sessions inherit the configuration. If you need to test the legacy snapshot flow, unset `BANKING_STORAGE_MODE` and set `BANKING_DATA_PATH` instead.
 
@@ -107,14 +105,15 @@ Start the HTTP server in a new PowerShell window:
 ```powershell
 java -cp build\classes banking.api.ApiApplication
 ```
-Interact with the API from another window (every request must include the API key header):
+Request a short-lived operator token and interact with the API from another window (every request must include the bearer token header):
 ```powershell
-curl -H "X-API-Key: $env:BANKING_API_KEY" -X POST "http://localhost:8080/accounts" -d "userName=Grace&accountType=savings&initialDeposit=1000"
-curl -H "X-API-Key: $env:BANKING_API_KEY" "http://localhost:8080/accounts"
-curl -H "X-API-Key: $env:BANKING_API_KEY" "http://localhost:8080/accounts/<ACCOUNT_NUMBER>"
-curl -H "X-API-Key: $env:BANKING_API_KEY" -X PUT "http://localhost:8080/accounts/<ACCOUNT_NUMBER>" -d "userName=Grace%20Hopper"
-curl -H "X-API-Key: $env:BANKING_API_KEY" -X DELETE "http://localhost:8080/accounts/<ACCOUNT_NUMBER>"
-curl -H "X-API-Key: $env:BANKING_API_KEY" "http://localhost:8080/metrics"
+$env:BANKING_TOKEN = (curl -Method Post -Body "username=admin&password=admin123!" http://localhost:8080/auth/login | ConvertFrom-Json).token
+curl -H "Authorization: Bearer $env:BANKING_TOKEN" -X POST "http://localhost:8080/accounts" -d "name=Grace&type=savings&deposit=1000"
+curl -H "Authorization: Bearer $env:BANKING_TOKEN" "http://localhost:8080/accounts"
+curl -H "Authorization: Bearer $env:BANKING_TOKEN" "http://localhost:8080/accounts/<ACCOUNT_NUMBER>"
+curl -H "Authorization: Bearer $env:BANKING_TOKEN" -X PUT "http://localhost:8080/accounts/<ACCOUNT_NUMBER>" -d "userName=Grace%20Hopper"
+curl -H "Authorization: Bearer $env:BANKING_TOKEN" -X DELETE "http://localhost:8080/accounts/<ACCOUNT_NUMBER>"
+curl -H "Authorization: Bearer $env:BANKING_TOKEN" "http://localhost:8080/metrics"
 ```
 Use `Ctrl+C` in the API window to trigger a graceful shutdown and final persistence cycle once testing completes.
 

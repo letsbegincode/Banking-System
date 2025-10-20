@@ -6,14 +6,6 @@ import banking.report.AccountStatement;
 import banking.report.AnalyticsReport;
 import banking.report.AnalyticsReportRequest;
 import banking.report.StatementGenerator;
-import banking.report.analytics.AnalyticsRange;
-import banking.report.analytics.AnalyticsReportService;
-import banking.report.analytics.AnomalyReport;
-import banking.report.analytics.RangeSummary;
-import banking.report.analytics.TrendReport;
-import banking.report.format.ReportFormatter;
-import banking.report.AccountStatement;
-import banking.report.StatementGenerator;
 import banking.service.Bank;
 import banking.transaction.BaseTransaction;
 import banking.ui.console.ConsoleIO;
@@ -29,7 +21,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Handles the collection of reporting and analytics workflows surfaced via the console.
+ */
 public class ReportFlow {
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
     private final Bank bank;
     private final ConsoleIO io;
     private final AccountPresenter accountPresenter;
@@ -39,13 +36,12 @@ public class ReportFlow {
     private final AnalyticsPresenter analyticsPresenter;
 
     public ReportFlow(Bank bank,
-            ConsoleIO io,
-            AccountPresenter accountPresenter,
-            StatementGenerator statementGenerator,
-            StatementPresenter statementPresenter,
-            AccountAnalyticsService analyticsService,
-            AnalyticsPresenter analyticsPresenter) {
-            StatementPresenter statementPresenter) {
+                      ConsoleIO io,
+                      AccountPresenter accountPresenter,
+                      StatementGenerator statementGenerator,
+                      StatementPresenter statementPresenter,
+                      AccountAnalyticsService analyticsService,
+                      AnalyticsPresenter analyticsPresenter) {
         this.bank = bank;
         this.io = io;
         this.accountPresenter = accountPresenter;
@@ -65,7 +61,6 @@ public class ReportFlow {
         io.info("6. Export Portfolio Analytics (CSV)");
         io.info("7. Export Portfolio Analytics (JSON)");
         io.info("8. Back to Main Menu");
-        io.info("5. Back to Main Menu");
 
         int choice = io.promptInt("Select a report to generate: ");
         switch (choice) {
@@ -77,7 +72,6 @@ public class ReportFlow {
             case 6 -> exportPortfolioAnalyticsCsv();
             case 7 -> exportPortfolioAnalyticsJson();
             case 8 -> io.info("Returning to main menu...");
-            case 5 -> io.info("Returning to main menu...");
             default -> io.error("Invalid choice!");
         }
     }
@@ -91,17 +85,14 @@ public class ReportFlow {
         List<BaseTransaction> allTransactions = bank.getAllAccounts().stream()
                 .flatMap(account -> account.getTransactions().stream())
                 .collect(Collectors.toList());
-
         if (allTransactions.isEmpty()) {
             io.warning("No transactions found in the system.");
             return;
         }
-
-        Map<String, Integer> transactionTypeCount = new HashMap<>();
-        allTransactions.forEach(transaction -> transactionTypeCount.merge(transaction.getType(), 1, Integer::sum));
-
+        Map<String, Integer> counts = new HashMap<>();
+        allTransactions.forEach(transaction -> counts.merge(transaction.getType(), 1, Integer::sum));
         io.subHeading("Transaction Volume Report");
-        transactionTypeCount.entrySet().stream()
+        counts.entrySet().stream()
                 .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
                 .forEach(entry -> io.println(entry.getKey() + ": " + entry.getValue()));
     }
@@ -113,14 +104,12 @@ public class ReportFlow {
             io.error("Account not found.");
             return;
         }
-
         LocalDate startDate = promptForDate("Enter start date (yyyy-MM-dd): ");
         LocalDate endDate = promptForDate("Enter end date (yyyy-MM-dd): ");
         if (endDate.isBefore(startDate)) {
             io.error("End date must not be before start date.");
             return;
         }
-
         AccountStatement statement = statementGenerator.generate(account, startDate, endDate);
         statementPresenter.show(statement);
     }
@@ -135,18 +124,16 @@ public class ReportFlow {
     private void exportPortfolioAnalyticsCsv() {
         AnalyticsReport report = runAnalyticsWorkflow();
         if (report != null) {
-            String csv = analyticsPresenter.toCsv(report);
             io.subHeading("CSV Export");
-            io.println(csv);
+            io.println(analyticsPresenter.toCsv(report));
         }
     }
 
     private void exportPortfolioAnalyticsJson() {
         AnalyticsReport report = runAnalyticsWorkflow();
         if (report != null) {
-            String json = analyticsPresenter.toJson(report);
             io.subHeading("JSON Export");
-            io.println(json);
+            io.println(analyticsPresenter.toJson(report));
         }
     }
 
@@ -167,6 +154,7 @@ public class ReportFlow {
         io.info("Press ENTER to accept defaults.");
         LocalDate startDate = promptOptionalDate("Enter analytics start date (yyyy-MM-dd)", defaultStart);
         LocalDate endDate = promptOptionalDate("Enter analytics end date (yyyy-MM-dd)", defaultEnd);
+
         String thresholdInput = io.prompt("Enter high-value threshold (default 5000): ");
         double threshold;
         if (thresholdInput == null || thresholdInput.isBlank()) {
@@ -206,10 +194,9 @@ public class ReportFlow {
     }
 
     private LocalDate promptForDate(String prompt) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         while (true) {
             try {
-                return LocalDate.parse(io.prompt(prompt), formatter);
+                return LocalDate.parse(io.prompt(prompt), DATE_FORMAT);
             } catch (DateTimeParseException ex) {
                 io.error("Invalid date format. Please use yyyy-MM-dd.");
             }
@@ -217,18 +204,16 @@ public class ReportFlow {
     }
 
     private LocalDate promptOptionalDate(String prompt, LocalDate defaultValue) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         while (true) {
             String input = io.prompt(prompt + " [" + defaultValue + "]: ");
             if (input == null || input.isBlank()) {
                 return defaultValue;
             }
             try {
-                return LocalDate.parse(input.trim(), formatter);
+                return LocalDate.parse(input.trim(), DATE_FORMAT);
             } catch (DateTimeParseException ex) {
                 io.error("Invalid date format. Please use yyyy-MM-dd.");
             }
         }
     }
-}
 }

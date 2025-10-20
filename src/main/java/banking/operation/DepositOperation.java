@@ -1,13 +1,6 @@
 package banking.operation;
 
 import banking.account.Account;
-
-public class DepositOperation implements AccountOperation {
-    private final Account account;
-    private final double amount;
-
-    public DepositOperation(Account account, double amount) {
-        this.account = account;
 import banking.persistence.AccountRepository;
 import banking.persistence.PersistenceException;
 
@@ -28,12 +21,6 @@ public class DepositOperation implements AccountOperation {
 
     @Override
     public OperationResult execute() {
-        try {
-            account.deposit(amount);
-            return OperationResult.success("Deposit of " + amount + " completed for account "
-                    + account.getAccountNumber());
-        } catch (IllegalArgumentException e) {
-            return OperationResult.failure("Deposit failed: " + e.getMessage());
         Account account = repository.findAccount(accountNumber);
         if (account == null) {
             return OperationResult.failure("Account not found: " + accountNumber);
@@ -52,7 +39,6 @@ public class DepositOperation implements AccountOperation {
 
     @Override
     public String getDescription() {
-        return "Deposit of " + amount + " to account " + account.getAccountNumber();
         return "Deposit of " + amount + " to account " + accountNumber;
     }
 

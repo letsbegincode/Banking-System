@@ -114,12 +114,12 @@ Automation clients and staging smoke tests interact with the unified HTTP adapte
 | Endpoint | Method(s) | Description |
 | --- | --- | --- |
 | `/health`, `/healthz` | GET | Liveness/readiness probes returning uptime telemetry. |
-| `/metrics` | GET | Prometheus-formatted counters for uptime, account counts, and pending work. Requires `X-API-Key`. |
-| `/accounts` | GET, POST | Enumerate accounts with filtering helpers or open new accounts with optional initial deposits. Requires `X-API-Key`. |
-| `/accounts/{accountNumber}` | GET, PUT, DELETE | Retrieve specific accounts, update account holder names, or close accounts with deterministic responses. Requires `X-API-Key`. |
-| `/operations/deposit` | POST | Queue a deposit for asynchronous processing. Requires `X-API-Key`. |
-| `/operations/withdraw` | POST | Queue a withdrawal with validation feedback. Requires `X-API-Key`. |
-| `/operations/transfer` | POST | Atomically move funds between accounts with conflict handling. Requires `X-API-Key`. |
+| `/metrics` | GET | Prometheus-formatted counters for uptime, account counts, and pending work. Requires `Authorization: Bearer <token>`. |
+| `/accounts` | GET, POST | Enumerate accounts with filtering helpers or open new accounts with optional initial deposits. Requires `Authorization: Bearer <token>`. |
+| `/accounts/{accountNumber}` | GET, PUT, DELETE | Retrieve specific accounts, update account holder names, or close accounts with deterministic responses. Requires `Authorization: Bearer <token>`. |
+| `/operations/deposit` | POST | Queue a deposit for asynchronous processing. Requires `Authorization: Bearer <token>`. |
+| `/operations/withdraw` | POST | Queue a withdrawal with validation feedback. Requires `Authorization: Bearer <token>`. |
+| `/operations/transfer` | POST | Atomically move funds between accounts with conflict handling. Requires `Authorization: Bearer <token>`. |
 ## Security Requirements
 - **Strong operator authentication:** Console and API operators must authenticate with salted password hashes stored outside of source control. Only unique, role-bound accounts are permitted.
 - **Token-based API access:** REST endpoints require short-lived bearer tokens carrying explicit role assignments. Tokens must be revocable without restarting the service.
@@ -149,11 +149,7 @@ Automation clients and staging smoke tests interact with the unified HTTP adapte
 - Store database backups (or in-memory snapshots during development) offsite.
 - Validate backups by performing periodic restore drills in a staging environment.
 - Automate log shipping to aid in reconstructing transaction sequences during investigations.
-<<<<<<< HEAD
-
 ### State Management & Migrations
 - Relational storage is handled through the JDBC repository. On boot the `BankRepositoryFactory` wires a `DriverManagerDataSource`, executes deterministic schema migrations, and exposes a repository that maps accounts and transactions into normalized tables.
 - `deploy/scripts/run-migrations.sh` invokes `banking.persistence.repository.DatabaseMigrationCli`, ensuring Kubernetes jobs, Terraform pipelines, or GitHub Actions runners can upgrade the schema ahead of traffic shifts. Migrations are versioned in the `bank_schema_migrations` table and run transactionally for idempotency.
 - Local developers can switch back to the filesystem-backed snapshot repository by unsetting `BANKING_STORAGE_MODE`. Legacy `.ser` files are read on first boot and persisted into the relational schema to maintain backwards compatibility.
-=======
->>>>>>> origin/pr/16

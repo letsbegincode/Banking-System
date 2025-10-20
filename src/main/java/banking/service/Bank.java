@@ -5,10 +5,12 @@ import banking.account.AccountFactory;
 import banking.account.CurrentAccount;
 import banking.account.FixedDepositAccount;
 import banking.account.SavingsAccount;
+import banking.report.AccountAnalyticsService;
+import banking.report.AnalyticsReport;
+import banking.report.AnalyticsReportOperation;
+import banking.report.AnalyticsReportRequest;
 import banking.snapshot.AccountSnapshot;
 import banking.snapshot.BankSnapshot;
-import banking.snapshot.TransactionSnapshot;
-import banking.snapshot.TransactionType;
 import banking.observer.AccountObserver;
 import banking.observer.ConsoleNotifier;
 import banking.observer.TransactionLogger;
@@ -18,13 +20,9 @@ import banking.operation.OperationResult;
 import banking.operation.TransferOperation;
 import banking.operation.WithdrawOperation;
 import banking.transaction.BaseTransaction;
-import banking.transaction.DepositTransaction;
-import banking.transaction.InterestTransaction;
-import banking.transaction.TransferReceiveTransaction;
-import banking.transaction.TransferTransaction;
-import banking.transaction.WithdrawalTransaction;
 import banking.persistence.AccountRepository;
 import banking.persistence.PersistenceException;
+import banking.persistence.memory.InMemoryAccountRepository;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -46,7 +44,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
-import java.util.Locale;
 
 public class Bank implements AutoCloseable {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -61,18 +58,26 @@ public class Bank implements AutoCloseable {
     private transient List<CompletableFuture<?>> backgroundTasks;
 
     public Bank() {
-        this(new HashMap<>());
+        this(new InMemoryAccountRepository());
     }
 
     private Bank(Map<Integer, Account> accounts) {
-        this.accounts = new HashMap<>(accounts);
+        this(new InMemoryAccountRepository(), accounts);
+    }
 
     public Bank(AccountRepository repository) {
+        this(repository, new HashMap<>());
+        loadAccountsFromRepository();
+    }
+
+    private Bank(AccountRepository repository, Map<Integer, Account> seededAccounts) {
         this.repository = Objects.requireNonNull(repository, "repository");
-        this.accounts = new HashMap<>();
+        this.accounts = new HashMap<>(Objects.requireNonNull(seededAccounts, "seededAccounts"));
         this.accountLocks = new ConcurrentHashMap<>();
         initializeTransientState();
-        loadAccountsFromRepository();
+        for (Account account : this.accounts.values()) {
+            accountLocks.putIfAbsent(account.getAccountNumber(), new ReentrantLock());
+        }
     }
 
     private void loadAccountsFromRepository() {
@@ -94,71 +99,9 @@ public class Bank implements AutoCloseable {
     public synchronized BankSnapshot snapshot() {
         List<AccountSnapshot> accountSnapshots = accounts.values().stream()
                 .sorted(Comparator.comparingInt(Account::getAccountNumber))
-                .map(Bank::toSnapshot)
+                .map(AccountSnapshot::fromAccount)
                 .collect(Collectors.toList());
         return new BankSnapshot(BankSnapshot.CURRENT_VERSION, accountSnapshots);
-    }
-
-    private static AccountSnapshot toSnapshot(Account account) {
-        List<TransactionSnapshot> transactions = account.getTransactions().stream()
-                .map(Bank::toSnapshot)
-                .collect(Collectors.toCollection(ArrayList::new));
-
-        Double minimumBalance = null;
-        Double overdraftLimit = null;
-        Integer termMonths = null;
-        String maturityDate = null;
-
-        if (account instanceof SavingsAccount savingsAccount) {
-            minimumBalance = savingsAccount.getMinimumBalance();
-        } else if (account instanceof CurrentAccount currentAccount) {
-            overdraftLimit = currentAccount.getOverdraftLimit();
-        } else if (account instanceof FixedDepositAccount fixedDepositAccount) {
-            termMonths = fixedDepositAccount.getTermMonths();
-            maturityDate = fixedDepositAccount.getMaturityDate().toString();
-        }
-
-        return new AccountSnapshot(canonicalAccountType(account), account.getAccountNumber(), account.getUserName(),
-                account.getBalance(), account.getCreationDate(), minimumBalance, overdraftLimit, termMonths,
-                maturityDate, transactions);
-    }
-
-    private static TransactionSnapshot toSnapshot(BaseTransaction transaction) {
-        TransactionType type;
-        Integer sourceAccount = null;
-        Integer targetAccount = null;
-
-        if (transaction instanceof DepositTransaction) {
-            type = TransactionType.DEPOSIT;
-        } else if (transaction instanceof WithdrawalTransaction) {
-            type = TransactionType.WITHDRAWAL;
-        } else if (transaction instanceof InterestTransaction) {
-            type = TransactionType.INTEREST;
-        } else if (transaction instanceof TransferTransaction transferTransaction) {
-            type = TransactionType.TRANSFER_OUT;
-            targetAccount = transferTransaction.getTargetAccountNumber();
-        } else if (transaction instanceof TransferReceiveTransaction receiveTransaction) {
-            type = TransactionType.TRANSFER_IN;
-            sourceAccount = receiveTransaction.getSourceAccountNumber();
-        } else {
-            throw new IllegalArgumentException("Unsupported transaction type: " + transaction.getClass());
-        }
-
-        return new TransactionSnapshot(type, transaction.getAmount(), transaction.getTimestamp().toString(),
-                transaction.getTransactionId(), sourceAccount, targetAccount);
-    }
-
-    private static String canonicalAccountType(Account account) {
-        if (account instanceof SavingsAccount) {
-            return "SAVINGS";
-        }
-        if (account instanceof CurrentAccount) {
-            return "CURRENT";
-        }
-        if (account instanceof FixedDepositAccount) {
-            return "FIXED_DEPOSIT";
-        }
-        return account.getAccountType().toUpperCase(Locale.ROOT).replace(' ', '_');
     }
 
     public synchronized void addObserver(AccountObserver observer) {
@@ -248,7 +191,7 @@ public class Bank implements AutoCloseable {
             AccountAnalyticsService analyticsService) {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(analyticsService, "analyticsService");
-        List<AccountSnapshot> snapshots = createAccountSnapshots();
+        List<banking.report.AccountSnapshot> snapshots = createAccountSnapshots();
         AnalyticsReportOperation operation = new AnalyticsReportOperation(request, analyticsService, snapshots);
         CompletableFuture<AnalyticsReport> reportFuture = operation.getReportFuture();
         CompletableFuture<OperationResult> operationFuture = queueOperation(operation);
@@ -424,6 +367,8 @@ public class Bank implements AutoCloseable {
             future.completeExceptionally(e);
         } finally {
             backgroundTasks.remove(future);
+        }
+    }
 
     private List<ReentrantLock> acquireLocks(AccountOperation operation) {
         List<Integer> accountNumbers = operation.getInvolvedAccountNumbers();
@@ -469,9 +414,9 @@ public class Bank implements AutoCloseable {
         }
     }
 
-    private synchronized List<AccountSnapshot> createAccountSnapshots() {
+    private synchronized List<banking.report.AccountSnapshot> createAccountSnapshots() {
         return accounts.values().stream()
-                .map(AccountSnapshot::fromAccount)
+                .map(banking.report.AccountSnapshot::fromAccount)
                 .collect(Collectors.toList());
     }
 

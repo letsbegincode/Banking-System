@@ -2,15 +2,14 @@ package banking.api;
 
 import banking.account.Account;
 import banking.operation.OperationResult;
-import banking.persistence.BankDAO;
+import banking.security.AuthenticationException;
+import banking.security.AuthenticationService;
 import banking.security.AuthenticationToken;
 import banking.security.AuthorizationService;
-import banking.security.ForbiddenException;
 import banking.security.Permission;
+import banking.security.ForbiddenException;
 import banking.security.TokenService;
 import banking.security.UnauthorizedException;
-import banking.service.Bank;
-import banking.ui.presenter.AnalyticsPresenter;
 import banking.service.Bank;
 
 import com.sun.net.httpserver.Headers;
@@ -18,124 +17,107 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
-import java.io.IOException;<<<<<<<HEAD
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;=======
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;>>>>>>>origin/pr/20
+import java.time.Duration;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;<<<<<<<HEAD
+import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
- * Hardened HTTP facade exposing banking capabilities for automation and
- * integration tests.
+ * Hardened HTTP facade exposing banking capabilities for automation scenarios.
  */
 public final class BankHttpServer {
-    private static final Duration OPERATION_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration OPERATION_TIMEOUT = Duration.ofSeconds(15);
     private static final String APPLICATION_JSON = "application/json; charset=utf-8";
-    private static final String TEXT_PLAIN = "text/plain; charset=utf-8";
+    private static final DateTimeFormatter ISO_INSTANT = DateTimeFormatter.ISO_INSTANT;
 
     private final Bank bank;
-    private final int requestedPort;<<<<<<<HEAD:src/banking/api/BankHttpServer.java
-    private final String expectedApiKey;=======
+    private final int requestedPort;
+    private final AuthenticationService authenticationService;
     private final TokenService tokenService;
-    private final AuthorizationService authorizationService;>>>>>>>origin/pr/19:src/main/java/banking/api/BankHttpServer.java
+    private final AuthorizationService authorizationService;
+
     private HttpServer server;
     private ExecutorService executorService;
     private Instant bootInstant;
 
-    <<<<<<<HEAD:src/banking/api/BankHttpServer.java
-
-    public BankHttpServer(Bank bank, int port) {
-        this(bank,
-                port,
-                new AnalyticsReportService(bank,
-                        new TrendAnalyticsService(),
-                        new AnomalyDetectionService(),
-                        new RangeAnalyticsService()),
-                new ReportFormatter());
-    }
-
-public BankHttpServer(Bank bank,
-            int port,
-            AnalyticsReportService analyticsReportService,
-            ReportFormatter reportFormatter) {
-        this.bank = Objects.requireNonNull(bank, "bank");
-        this.requestedPort = port;
-        this.expectedApiKey = Optional.ofNullable(System.getenv("BANKING_API_KEY"))
-                .filter(value -> !value.isBlank())
-                .orElse("local-dev-key");
-=======
-
-public BankHttpServer(Bank bank, int port, TokenService tokenService,
+    public BankHttpServer(Bank bank,
+                          int port,
+                          AuthenticationService authenticationService,
+                          TokenService tokenService,
                           AuthorizationService authorizationService) {
         this.bank = Objects.requireNonNull(bank, "bank");
         this.requestedPort = port;
+        this.authenticationService = Objects.requireNonNull(authenticationService, "authenticationService");
         this.tokenService = Objects.requireNonNull(tokenService, "tokenService");
         this.authorizationService = Objects.requireNonNull(authorizationService, "authorizationService");
->>>>>>> origin/pr/19:src/main/java/banking/api/BankHttpServer.java
-=======
-import java.util.StringJoiner;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-/**
- * Lightweight HTTP facade that exposes a subset of the banking service as
- * REST-style endpoints.
- */
-public class BankHttpServer {
-    private final Bank bank;
-    private final int requestedPort;
-    private HttpServer server;
-    private ExecutorService executorService;
-
-    public BankHttpServer(Bank bank, int port) {
-        this.bank=Objects.requireNonNull(bank,"bank");this.requestedPort=port;>>>>>>>origin/pr/20
     }
 
     public synchronized void start() {
-        if(server!=null){return;}try{server=HttpServer.create(new InetSocketAddress(requestedPort),0);}catch(IOException e){throw new IllegalStateException("Unable to start HTTP server",e);}<<<<<<<HEAD
+        if (server != null) {
+            return;
+        }
+        try {
+            server = HttpServer.create(new InetSocketAddress(requestedPort), 0);
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to start HTTP server", e);
+        }
+        executorService = Executors.newFixedThreadPool(Math.max(4, Runtime.getRuntime().availableProcessors()));
+        server.setExecutor(executorService);
+        bootInstant = Instant.now();
 
-        executorService=Executors.newFixedThreadPool(Math.max(4,Runtime.getRuntime().availableProcessors()));server.setExecutor(executorService);bootInstant=Instant.now();
+        server.createContext("/health", new HealthHandler());
+        server.createContext("/healthz", new HealthHandler());
+        server.createContext("/metrics", new MetricsHandler());
+        server.createContext("/auth/login", new LoginHandler());
+        server.createContext("/accounts", new AccountsHandler());
+        server.createContext("/accounts/", new AccountDetailHandler());
+        server.createContext("/operations/deposit", new DepositHandler());
+        server.createContext("/operations/withdraw", new WithdrawHandler());
+        server.createContext("/operations/transfer", new TransferHandler());
 
-        createContext("/health",new HealthHandler());createContext("/healthz",new HealthHandler());createContext("/metrics",new MetricsHandler());createContext("/accounts",new AccountsHandler());createContext("/accounts/",new AccountDetailHandler());createContext("/operations/deposit",new OperationHandler(OperationType.DEPOSIT));createContext("/operations/withdraw",new OperationHandler(OperationType.WITHDRAW));createContext("/operations/transfer",new OperationHandler(OperationType.TRANSFER));
-
-        server.start();System.out.printf("HTTP API listening on port %d%n",getPort());=======executorService=Executors.newFixedThreadPool(4);server.createContext("/health",new HealthHandler());server.createContext("/accounts",new AccountsHandler());server.createContext("/operations/deposit",new DepositHandler());server.createContext("/operations/withdraw",new WithdrawHandler());server.createContext("/operations/transfer",new TransferHandler());server.setExecutor(executorService);server.start();>>>>>>>origin/pr/20
+        server.start();
+        System.out.printf(Locale.US, "HTTP API listening on port %d%n", getPort());
     }
 
     public synchronized void stop() {
-        if(server!=null){server.stop(0);server=null;}if(executorService!=null){<<<<<<<HEAD executorService.shutdown();try{if(!executorService.awaitTermination(5,TimeUnit.SECONDS)){executorService.shutdownNow();}}catch(InterruptedException e){executorService.shutdownNow();Thread.currentThread().interrupt();}finally{executorService=null;}}
-
-        bank.shutdown();BankDAO.saveBank(bank);
+        if (server != null) {
+            server.stop(0);
+            server = null;
+        }
+        if (executorService != null) {
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            } finally {
+                executorService = null;
+            }
+        }
     }
 
     public synchronized boolean isRunning() {
         return server != null;
-=======
-            executorService.shutdownNow();
-            executorService = null;
-        }>>>>>>>origin/pr/20
-
     }
 
     public synchronized int getPort() {
@@ -145,210 +127,69 @@ public class BankHttpServer {
         return server.getAddress().getPort();
     }
 
-    <<<<<<<HEAD
-
-    private void createContext(String path, HttpHandler handler) {
-        server.createContext(path, exchange -> {
-            try {
-                handler.handle(exchange);
-            } finally {
-                exchange.close();
-            }
-        });
-    }
-
-    private abstract class BaseHandler implements HttpHandler {
+    private abstract class JsonHandler implements HttpHandler {
         @Override
         public final void handle(HttpExchange exchange) throws IOException {
             try {
-                if (requiresAuthentication()) {
-                    enforceApiKey(exchange.getRequestHeaders());
-                }
                 handleInternal(exchange);
-<<<<<<< HEAD:src/banking/api/BankHttpServer.java
-            } catch (ClientErrorException e) {
-                writeJson(exchange, e.statusCode,
-                        Map.of("error", e.getMessage(), "success", false));
-=======
             } catch (UnauthorizedException e) {
                 respond(exchange, 401, jsonError(e.getMessage()));
             } catch (ForbiddenException e) {
                 respond(exchange, 403, jsonError(e.getMessage()));
             } catch (IllegalArgumentException e) {
                 respond(exchange, 400, jsonError(e.getMessage()));
->>>>>>> origin/pr/19:src/main/java/banking/api/BankHttpServer.java
-            } catch (Exception e) {
-                writeJson(exchange, 500,
-                        Map.of("error", "Internal server error: " + e.getMessage(), "success", false));
-=======
-    private abstract class JsonHandler implements HttpHandler {
-        @Override
-        public final void handle(HttpExchange exchange) throws IOException {
-            try {
-                handleInternal(exchange);
-            } catch (IllegalArgumentException e) {
-                respond(exchange, 400, jsonError(e.getMessage()));
             } catch (Exception e) {
                 respond(exchange, 500, jsonError("Internal server error: " + e.getMessage()));
             } finally {
                 exchange.close();
->>>>>>> origin/pr/20
             }
         }
 
         protected abstract void handleInternal(HttpExchange exchange) throws Exception;
 
-<<<<<<< HEAD
-        <<<<<<<HEAD:src/banking/api/BankHttpServer.java
+        protected AuthenticationToken requirePermission(HttpExchange exchange, Permission permission) {
+            AuthenticationToken token = authenticate(exchange.getRequestHeaders());
+            authorizationService.ensureAuthorized(token, permission);
+            return token;
+        }
 
-        protected boolean requiresAuthentication() {
-            return true;
-=======
-
-        protected AuthenticationToken requireAuthentication(HttpExchange exchange) {
-            String header = exchange.getRequestHeaders().getFirst("Authorization");
-            if (header == null || header.isBlank() || !header.startsWith("Bearer ")) {
+        protected AuthenticationToken authenticate(Headers headers) {
+            String header = headers.getFirst("Authorization");
+            if (header == null || !header.startsWith("Bearer ")) {
                 throw new UnauthorizedException("Missing bearer token");
             }
             String tokenValue = header.substring("Bearer ".length()).trim();
-            return tokenService.validate(tokenValue)
-                .orElseThrow(() -> new UnauthorizedException("Token is invalid or expired"));
-        }
-
-        protected AuthenticationToken requirePermission(HttpExchange exchange, Permission permission) {
-            AuthenticationToken token = requireAuthentication(exchange);
-            authorizationService.ensureAuthorized(token, permission);
-            return token;
->>>>>>> origin/pr/19:src/main/java/banking/api/BankHttpServer.java
-        }
-
-        protected void ensureMethod(HttpExchange exchange, String expectedMethod) {
-            if (!expectedMethod.equalsIgnoreCase(exchange.getRequestMethod())) {
-                throw new ClientErrorException(405, "Unsupported method. Expected " + expectedMethod);
-            }
-        }
-
-        private void enforceApiKey(Headers headers) {
-            String provided = headers.getFirst("X-API-Key");
-            if (provided == null || !provided.equals(expectedApiKey)) {
-                throw new ClientErrorException(401, "Missing or invalid API key");
-=======
-        protected void ensureMethod(HttpExchange exchange, String expectedMethod) {
-            if (!expectedMethod.equalsIgnoreCase(exchange.getRequestMethod())) {
-                throw new IllegalArgumentException("Unsupported method. Expected " + expectedMethod);
->>>>>>> origin/pr/20
-            }
+            Optional<AuthenticationToken> token = tokenService.validate(tokenValue);
+            return token.orElseThrow(() -> new UnauthorizedException("Invalid or expired token"));
         }
 
         protected Map<String, String> parseParams(HttpExchange exchange) throws IOException {
-<<<<<<< HEAD
-            Map<String, String> params = new LinkedHashMap<>();
-            URI uri = exchange.getRequestURI();
-            String query = uri.getRawQuery();
-=======
             Map<String, String> params = new HashMap<>();
-            String query = exchange.getRequestURI().getRawQuery();
->>>>>>> origin/pr/20
-            if (query != null && !query.isEmpty()) {
-                parseInto(params, query);
+            String query = null;
+            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())
+                    || "PUT".equalsIgnoreCase(exchange.getRequestMethod())) {
+                query = readBody(exchange.getRequestBody());
             }
-            String method = exchange.getRequestMethod();
-<<<<<<< HEAD
-            if ("POST".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)
-                    || "PATCH".equalsIgnoreCase(method) || "DELETE".equalsIgnoreCase(method)) {
-                byte[] bodyBytes = exchange.getRequestBody().readAllBytes();
-                if (bodyBytes.length > 0) {
-                    parseInto(params, new String(bodyBytes, StandardCharsets.UTF_8));
-=======
-            if ("POST".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)) {
-                String body = readBody(exchange.getRequestBody());
-                if (!body.isEmpty()) {
-                    parseInto(params, body);
->>>>>>> origin/pr/20
+            if (query == null || query.isBlank()) {
+                URI uri = exchange.getRequestURI();
+                query = uri.getRawQuery();
+            }
+            if (query == null || query.isBlank()) {
+                return params;
+            }
+            for (String pair : query.split("&")) {
+                int idx = pair.indexOf('=');
+                if (idx >= 0) {
+                    String key = urlDecode(pair.substring(0, idx));
+                    String value = urlDecode(pair.substring(idx + 1));
+                    params.put(key, value);
+                } else {
+                    params.put(urlDecode(pair), "");
                 }
             }
             return params;
         }
 
-<<<<<<< HEAD
-        private void parseInto(Map<String, String> params, String queryString) {
-            String[] pairs = queryString.split("&");
-=======
-        private void parseInto(Map<String, String> params, String source) throws IOException {
-            String[] pairs = source.split("&");
->>>>>>> origin/pr/20
-            for (String pair : pairs) {
-                if (pair.isEmpty()) {
-                    continue;
-                }
-                String[] keyValue = pair.split("=", 2);
-<<<<<<< HEAD
-                String key = decode(keyValue[0]);
-                String value = keyValue.length > 1 ? decode(keyValue[1]) : "";
-=======
-                String key = URLDecoder.decode(keyValue[0], StandardCharsets.UTF_8.name());
-                String value = keyValue.length > 1
-                    ? URLDecoder.decode(keyValue[1], StandardCharsets.UTF_8.name())
-                    : "";
->>>>>>> origin/pr/20
-                params.put(key, value);
-            }
-        }
-
-<<<<<<< HEAD
-        private String decode(String value) {
-            return java.net.URLDecoder.decode(value, StandardCharsets.UTF_8);
-        }
-
-    }
-
-    private final class HealthHandler extends BaseHandler {
-        @Override
-        protected void handleInternal(HttpExchange exchange) throws IOException {
-            requirePermission(exchange, Permission.HEALTH_READ);
-            ensureMethod(exchange, "GET");
-            writeJson(exchange, 200, Map.of("status", "ok", "uptimeSeconds",
-                    Duration.between(bootInstant, Instant.now()).toSeconds()));
-        }
-
-        @Override
-        protected boolean requiresAuthentication() {
-            return false;
-        }
-    }
-
-    private final class MetricsHandler extends BaseHandler {
-        @Override
-        protected void handleInternal(HttpExchange exchange) throws IOException {
-            ensureMethod(exchange, "GET");
-            Duration uptime = Duration.between(bootInstant, Instant.now());
-            StringJoiner joiner = new StringJoiner("\n");
-            joiner.add("bank_api_uptime_seconds " + uptime.toSeconds());
-            joiner.add("bank_accounts_total " + bank.getAllAccounts().size());
-            joiner.add("bank_pending_operations " + bank.getPendingOperationCount());
-            writeText(exchange, 200, joiner.toString() + "\n");
-        }
-    }
-
-    private final class AccountsHandler extends BaseHandler {
-        @Override
-        protected void handleInternal(HttpExchange exchange) throws Exception {
-<<<<<<< HEAD:src/banking/api/BankHttpServer.java
-            if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                listAccounts(exchange);
-            } else if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-=======
-            String method = exchange.getRequestMethod();
-            if ("GET".equalsIgnoreCase(method)) {
-                requirePermission(exchange, Permission.ACCOUNT_READ);
-                listAccounts(exchange);
-            } else if ("POST".equalsIgnoreCase(method)) {
-                requirePermission(exchange, Permission.ACCOUNT_CREATE);
->>>>>>> origin/pr/19:src/main/java/banking/api/BankHttpServer.java
-                createAccount(exchange);
-            } else {
-                throw new ClientErrorException(405, "Unsupported method. Expected GET or POST");
-=======
         private String readBody(InputStream inputStream) throws IOException {
             if (inputStream == null) {
                 return "";
@@ -357,18 +198,25 @@ public class BankHttpServer {
             return new String(buffer, StandardCharsets.UTF_8);
         }
 
-        protected void respond(HttpExchange exchange, int status, String body) throws IOException {
-            byte[] responseBytes = body.getBytes(StandardCharsets.UTF_8);
-            Headers headers = exchange.getResponseHeaders();
-            headers.set("Content-Type", "application/json; charset=utf-8");
-            exchange.sendResponseHeaders(status, responseBytes.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(responseBytes);
+        private String urlDecode(String value) {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        }
+
+        protected void respond(HttpExchange exchange, int statusCode, String body) throws IOException {
+            byte[] payload = body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", APPLICATION_JSON);
+            exchange.sendResponseHeaders(statusCode, payload.length);
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+                outputStream.write(payload);
             }
         }
 
         protected String jsonError(String message) {
-            return '{' + "\"success\":false,\"message\":\"" + escape(message) + "\"}";
+            return "{\"success\":false,\"error\":\"" + escapeJson(message) + "\"}";
+        }
+
+        protected String escapeJson(String value) {
+            return escape(value);
         }
     }
 
@@ -376,405 +224,219 @@ public class BankHttpServer {
         @Override
         protected void handleInternal(HttpExchange exchange) throws IOException {
             ensureMethod(exchange, "GET");
-            respond(exchange, 200, "{\"status\":\"ok\"}");
+            requirePermission(exchange, Permission.HEALTH_READ);
+            respond(exchange, 200, "{\"status\":\"UP\"}");
+        }
+    }
+
+    private final class MetricsHandler extends JsonHandler {
+        @Override
+        protected void handleInternal(HttpExchange exchange) throws IOException {
+            ensureMethod(exchange, "GET");
+            AuthenticationToken token = requirePermission(exchange, Permission.HEALTH_READ);
+            long uptimeSeconds = bootInstant == null ? 0 : Duration.between(bootInstant, Instant.now()).getSeconds();
+            String body = "{" +
+                    "\"principal\":\"" + escape(token.principal()) + "\"," +
+                    "\"uptimeSeconds\":" + uptimeSeconds + "," +
+                    "\"accounts\":" + bank.getAllAccounts().size() +
+                    "}";
+            respond(exchange, 200, body);
+        }
+    }
+
+    private final class LoginHandler extends JsonHandler {
+        @Override
+        protected void handleInternal(HttpExchange exchange) throws IOException {
+            ensureMethod(exchange, "POST");
+            Map<String, String> params = parseParams(exchange);
+            String username = params.getOrDefault("username", "");
+            String password = params.getOrDefault("password", "");
+            if (username.isBlank() || password.isBlank()) {
+                throw new IllegalArgumentException("username and password are required");
+            }
+            try {
+                AuthenticationToken token = authenticationService.login(username, password);
+                String body = "{" +
+                        "\"token\":\"" + escape(token.token()) + "\"," +
+                        "\"principal\":\"" + escape(token.principal()) + "\"," +
+                        "\"expiresAt\":\"" + ISO_INSTANT.format(token.expiresAt()) + "\"," +
+                        "\"roles\":[" + joinRoles(token.roles()) + "]}";
+                respond(exchange, 200, body);
+            } catch (AuthenticationException e) {
+                respond(exchange, 401, jsonError(e.getMessage()));
+            }
+        }
+
+        private String joinRoles(Iterable<?> roles) {
+            StringJoiner joiner = new StringJoiner(",");
+            for (Object role : roles) {
+                joiner.add("\"" + escape(role.toString()) + "\"");
+            }
+            return joiner.toString();
         }
     }
 
     private final class AccountsHandler extends JsonHandler {
         @Override
         protected void handleInternal(HttpExchange exchange) throws Exception {
-            String method = exchange.getRequestMethod();
-            if ("GET".equalsIgnoreCase(method)) {
-                listAccounts(exchange);
-            } else if ("POST".equalsIgnoreCase(method)) {
-                createAccount(exchange);
-            } else {
-                throw new IllegalArgumentException("Unsupported method. Expected GET or POST");
->>>>>>> origin/pr/20
+            switch (exchange.getRequestMethod()) {
+                case "GET" -> listAccounts(exchange);
+                case "POST" -> createAccount(exchange);
+                default -> throw new IllegalArgumentException("Unsupported method: " + exchange.getRequestMethod());
             }
         }
 
         private void listAccounts(HttpExchange exchange) throws IOException {
-<<<<<<< HEAD
-            Map<String, String> params = parseParams(exchange);
-            List<Account> accounts;
-            if (params.containsKey("type")) {
-                accounts = bank.getAccountsByType(params.get("type"));
-            } else if (params.containsKey("search")) {
-                accounts = bank.searchAccounts(params.get("search"));
-            } else {
-                accounts = bank.getAllAccounts();
-            }
-
-            List<Map<String, Object>> payload = new ArrayList<>();
+            requirePermission(exchange, Permission.ACCOUNT_READ);
+            List<Account> accounts = bank.getAllAccounts();
+            StringBuilder builder = new StringBuilder();
+            builder.append('{');
+            builder.append("\"accounts\":[");
+            StringJoiner joiner = new StringJoiner(",");
             for (Account account : accounts) {
-                payload.add(accountPayload(account));
+                joiner.add(accountJson(account));
             }
-            writeJson(exchange, 200, payload);
-        }
-
-        private void createAccount(HttpExchange exchange) throws IOException {
-            Map<String, String> params = parseParams(exchange);
-            String userName = firstPresent(params, "userName", "name");
-            if (userName == null || userName.isBlank()) {
-                throw new ClientErrorException(400, "Parameter 'userName' is required");
-            }
-            String accountType = firstPresent(params, "accountType", "type");
-            if (accountType == null || accountType.isBlank()) {
-                throw new ClientErrorException(400, "Parameter 'accountType' is required");
-            }
-            String depositParam = firstPresent(params, "initialDeposit", "deposit");
-            double initialDeposit = parseDouble(depositParam, "initialDeposit").orElse(0.0);
-
-            Account account = bank.createAccount(userName, accountType, initialDeposit);
-            BankDAO.saveBank(bank);
-            writeJson(exchange, 201, accountPayload(account));
-        }
-    }
-
-    private final class AccountDetailHandler extends BaseHandler {
-        @Override
-        protected void handleInternal(HttpExchange exchange) throws Exception {
-            int accountNumber = extractAccountNumber(exchange);
-            String method = exchange.getRequestMethod();
-            if ("GET".equalsIgnoreCase(method)) {
-                getAccount(exchange, accountNumber);
-            } else if ("PUT".equalsIgnoreCase(method) || "PATCH".equalsIgnoreCase(method)) {
-                updateAccount(exchange, accountNumber);
-            } else if ("DELETE".equalsIgnoreCase(method)) {
-                deleteAccount(exchange, accountNumber);
-            } else {
-                throw new ClientErrorException(405, "Unsupported method. Expected GET, PUT, PATCH, or DELETE");
-            }
-        }
-
-        private void getAccount(HttpExchange exchange, int accountNumber) throws IOException {
-            Account account = bank.getAccount(accountNumber);
-            if (account == null) {
-                throw new ClientErrorException(404, "Account not found: " + accountNumber);
-            }
-            writeJson(exchange, 200, accountPayload(account));
-        }
-
-        private void updateAccount(HttpExchange exchange, int accountNumber) throws IOException {
-            Map<String, String> params = parseParams(exchange);
-            String newName = firstPresent(params, "userName", "name");
-            if (newName == null || newName.isBlank()) {
-                throw new ClientErrorException(400, "Parameter 'userName' is required");
-            }
-
-            boolean updated = bank.updateAccountHolderName(accountNumber, newName);
-            if (!updated) {
-                throw new ClientErrorException(404, "Account not found: " + accountNumber);
-            }
-
-            Account account = bank.getAccount(accountNumber);
-            if (account == null) {
-                throw new ClientErrorException(404, "Account not found: " + accountNumber);
-            }
-
-            BankDAO.saveBank(bank);
-            writeJson(exchange, 200, Map.of(
-                    "message", "Account holder updated",
-                    "account", accountPayload(account)));
-        }
-
-        private void deleteAccount(HttpExchange exchange, int accountNumber) throws IOException {
-            boolean removed = bank.closeAccount(accountNumber);
-            if (!removed) {
-                throw new ClientErrorException(404, "Account not found: " + accountNumber);
-            }
-
-            BankDAO.saveBank(bank);
-            writeJson(exchange, 200, Map.of(
-                    "success", true,
-                    "message", "Account closed",
-                    "accountNumber", accountNumber));
-        }
-
-        private int extractAccountNumber(HttpExchange exchange) {
-            String contextPath = exchange.getHttpContext().getPath();
-            String requestPath = exchange.getRequestURI().getPath();
-            if (!requestPath.startsWith(contextPath)) {
-                throw new ClientErrorException(404, "Account not found");
-            }
-
-            String remainder = requestPath.substring(contextPath.length());
-            if (remainder.startsWith("/")) {
-                remainder = remainder.substring(1);
-            }
-            int slashIndex = remainder.indexOf('/');
-            if (slashIndex >= 0) {
-                remainder = remainder.substring(0, slashIndex);
-            }
-            if (remainder.isBlank()) {
-                throw new ClientErrorException(404, "Account not found");
-            }
-
-            try {
-                return Integer.parseInt(remainder);
-            } catch (NumberFormatException e) {
-                throw new ClientErrorException(400, "Invalid account number: " + remainder);
-            }
-        }
-    }
-
-    private final class OperationHandler extends BaseHandler {
-        private final OperationType type;
-
-        OperationHandler(OperationType type) {
-            this.type = type;
-        }
-
-        @Override
-        protected void handleInternal(HttpExchange exchange) throws Exception {
-            ensureMethod(exchange, "POST");
-            requirePermission(exchange, Permission.FUNDS_DEPOSIT);
-            Map<String, String> params = parseParams(exchange);
-            switch (type) {
-                case DEPOSIT -> handleDeposit(exchange, params);
-                case WITHDRAW -> handleWithdraw(exchange, params);
-                case TRANSFER -> handleTransfer(exchange, params);
-                default -> throw new IllegalStateException("Unhandled operation type: " + type);
-            }
-        }
-
-        private void handleDeposit(HttpExchange exchange, Map<String, String> params) throws IOException {
-            int accountNumber = parseRequiredInt(params, "accountNumber", "Account number is required");
-            double amount = parseRequiredAmount(params, "amount");
-            executeOperation(exchange, bank.deposit(accountNumber, amount));
-        }
-
-        private void handleWithdraw(HttpExchange exchange, Map<String, String> params) throws IOException {
-            int accountNumber = parseRequiredInt(params, "accountNumber", "Account number is required");
-            double amount = parseRequiredAmount(params, "amount");
-            executeOperation(exchange, bank.withdraw(accountNumber, amount));
-        }
-
-        private void handleTransfer(HttpExchange exchange, Map<String, String> params) throws IOException {
-            int source = parseRequiredInt(params, "accountNumber", "Source account number is required",
-                    "sourceAccount");
-            int target = parseRequiredInt(params, "targetAccountNumber", "Target account number is required",
-                    "targetAccount");
-            double amount = parseRequiredAmount(params, "amount");
-            executeOperation(exchange, bank.transfer(source, target, amount));
-        }
-    }
-
-    <<<<<<<HEAD:src/banking/api/BankHttpServer.java
-
-        private void executeOperation(HttpExchange exchange, CompletableFuture<OperationResult> future)
-                throws IOException {
-            OperationResult result;
-            try {
-                result = future.get(OPERATION_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-            } catch (TimeoutException e) {
-                writeJson(exchange, 504, Map.of(
-                        "success", false,
-                        "error", "Operation timed out after " + OPERATION_TIMEOUT.toSeconds() + " seconds"));
-                return;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                writeJson(exchange, 500, Map.of(
-                        "success", false,
-                        "error", "Operation interrupted"));
-                return;
-            } catch (ExecutionException e) {
-                String message = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
-                writeJson(exchange, 500, Map.of(
-                        "success", false,
-                        "error", "Operation failed: " + message));
-                return;
-            }
-
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("success", result.isSuccess());
-            payload.put("message", result.getMessage());
-            payload.put("completedAt", Instant.now().toString());
-
-            if (result.isSuccess()) {
-                BankDAO.saveBank(bank);
-                writeJson(exchange, 200, payload);
-            } else {
-                writeJson(exchange, 409, payload);
-            }
-        }
-
-        private Map<String, Object> accountPayload(Account account) {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("accountNumber", account.getAccountNumber());
-            payload.put("userName", account.getUserName());
-            payload.put("accountType", account.getAccountType());
-            payload.put("balance", account.getBalance());
-            payload.put("formattedBalance", formatAmount(account.getBalance()));
-            return payload;
-        }
-
-        private void writeJson(HttpExchange exchange, int status, Map<String, ?> body) throws IOException {
-            byte[] responseBytes = JsonFormatter.stringify(body).getBytes(StandardCharsets.UTF_8);
-            writeResponse(exchange, status, APPLICATION_JSON, responseBytes);
-        }
-
-        private void writeJson(HttpExchange exchange, int status, List<?> body) throws IOException {
-            byte[] responseBytes = JsonFormatter.stringify(body).getBytes(StandardCharsets.UTF_8);
-            writeResponse(exchange, status, APPLICATION_JSON, responseBytes);
-        }
-
-        private void writeText(HttpExchange exchange, int status, String body) throws IOException {
-            byte[] responseBytes = body.getBytes(StandardCharsets.UTF_8);
-            writeResponse(exchange, status, TEXT_PLAIN, responseBytes);
-        }
-
-        private void writeResponse(HttpExchange exchange, int status, String contentType, byte[] body)
-                throws IOException {
-            Headers headers=exchange.getResponseHeaders();headers.set("Content-Type",contentType);exchange.sendResponseHeaders(status,body.length);try(OutputStream outputStream=exchange.getResponseBody()){outputStream.write(body);==============List<Account>accounts=bank.getAllAccounts();StringJoiner joiner=new StringJoiner(",","[","]");for(Account account:accounts){joiner.add(accountJson(account));}respond(exchange,200,joiner.toString());
+            builder.append(joiner);
+            builder.append("],\"count\":").append(accounts.size()).append('}');
+            respond(exchange, 200, builder.toString());
         }
 
         private void createAccount(HttpExchange exchange) throws Exception {
+            requirePermission(exchange, Permission.ACCOUNT_CREATE);
             Map<String, String> params = parseParams(exchange);
-            String name = params.get("name");
+            String userName = params.get("name");
             String type = params.get("type");
-            String depositParam = params.getOrDefault("deposit", "0");
-            if (name == null || name.isBlank()) {
-                throw new IllegalArgumentException("Parameter 'name' is required");
+            double initialDeposit = parseAmount(params.get("deposit"));
+            if (userName == null || userName.isBlank()) {
+                throw new IllegalArgumentException("name is required");
             }
             if (type == null || type.isBlank()) {
-                throw new IllegalArgumentException("Parameter 'type' is required");
+                throw new IllegalArgumentException("type is required");
             }
-            double deposit;
-            try {
-                deposit = Double.parseDouble(depositParam);
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("Invalid deposit amount: " + depositParam);
-            }
-            Account account = bank.createAccount(name, type, deposit);
+            Account account = bank.createAccount(userName, type, initialDeposit);
             respond(exchange, 201, accountJson(account));
         }
     }
 
-    private final class DepositHandler extends JsonHandler {
+    private final class AccountDetailHandler extends JsonHandler {
+        @Override
+        protected void handleInternal(HttpExchange exchange) throws Exception {
+            URI uri = exchange.getRequestURI();
+            String path = uri.getPath();
+            String idPart = path.substring("/accounts/".length());
+            if (idPart.isEmpty()) {
+                throw new IllegalArgumentException("Account identifier missing");
+            }
+            int accountNumber = parseAccountNumber(idPart);
+            switch (exchange.getRequestMethod()) {
+                case "GET" -> fetch(exchange, accountNumber);
+                case "PUT" -> update(exchange, accountNumber);
+                case "DELETE" -> delete(exchange, accountNumber);
+                default -> throw new IllegalArgumentException("Unsupported method: " + exchange.getRequestMethod());
+            }
+        }
+
+        private void fetch(HttpExchange exchange, int accountNumber) throws IOException {
+            requirePermission(exchange, Permission.ACCOUNT_READ);
+            Account account = bank.getAccount(accountNumber);
+            if (account == null) {
+                respond(exchange, 404, jsonError("Account not found"));
+                return;
+            }
+            respond(exchange, 200, accountJson(account));
+        }
+
+        private void update(HttpExchange exchange, int accountNumber) throws Exception {
+            requirePermission(exchange, Permission.ACCOUNT_CREATE);
+            Map<String, String> params = parseParams(exchange);
+            String userName = params.get("userName");
+            if (userName == null || userName.isBlank()) {
+                throw new IllegalArgumentException("userName is required");
+            }
+            boolean updated = bank.updateAccountHolderName(accountNumber, userName);
+            if (!updated) {
+                respond(exchange, 404, jsonError("Account not found"));
+                return;
+            }
+            Account account = bank.getAccount(accountNumber);
+            respond(exchange, 200, accountJson(account));
+        }
+
+        private void delete(HttpExchange exchange, int accountNumber) throws IOException {
+            requirePermission(exchange, Permission.ACCOUNT_CREATE);
+            boolean removed = bank.closeAccount(accountNumber);
+            if (!removed) {
+                respond(exchange, 404, jsonError("Account not found"));
+                return;
+            }
+            respond(exchange, 200, "{\"success\":true}");
+        }
+    }
+
+    private final class DepositHandler extends OperationHandler {
+        private DepositHandler() {
+            super(Permission.FUNDS_DEPOSIT);
+        }
+
+        @Override
+        protected OperationResult invoke(Bank bank, Map<String, String> params) {
+            int accountNumber = parseAccountNumber(params.get("accountNumber"));
+            double amount = parseAmount(params.get("amount"));
+            return join(bank.deposit(accountNumber, amount));
+        }
+    }
+
+    private final class WithdrawHandler extends OperationHandler {
+        private WithdrawHandler() {
+            super(Permission.FUNDS_WITHDRAW);
+        }
+
+        @Override
+        protected OperationResult invoke(Bank bank, Map<String, String> params) {
+            int accountNumber = parseAccountNumber(params.get("accountNumber"));
+            double amount = parseAmount(params.get("amount"));
+            return join(bank.withdraw(accountNumber, amount));
+        }
+    }
+
+    private final class TransferHandler extends OperationHandler {
+        private TransferHandler() {
+            super(Permission.FUNDS_TRANSFER);
+        }
+
+        @Override
+        protected OperationResult invoke(Bank bank, Map<String, String> params) {
+            int source = parseAccountNumber(params.get("sourceAccount"));
+            int target = parseAccountNumber(params.get("targetAccount"));
+            double amount = parseAmount(params.get("amount"));
+            return join(bank.transfer(source, target, amount));
+        }
+    }
+
+    private abstract class OperationHandler extends JsonHandler {
+        private final Permission permission;
+
+        protected OperationHandler(Permission permission) {
+            this.permission = permission;
+        }
+
         @Override
         protected void handleInternal(HttpExchange exchange) throws Exception {
             ensureMethod(exchange, "POST");
+            requirePermission(exchange, permission);
             Map<String, String> params = parseParams(exchange);
-            int accountNumber = parseAccountNumber(params.get("accountNumber"));
-            double amount = parseAmount(params.get("amount"));
-            OperationResult result = bank.deposit(accountNumber, amount).join();
+            OperationResult result = invoke(bank, params);
             respond(exchange, statusFor(result), resultJson(result));
         }
+
+        protected abstract OperationResult invoke(Bank bank, Map<String, String> params);
     }
 
-    >>>>>>>origin/pr/20
-
-    private final class WithdrawHandler extends JsonHandler {
-        @Override
-        protected void handleInternal(HttpExchange exchange) throws Exception {
-            ensureMethod(exchange,"POST");<<<<<<<HEAD requirePermission(exchange,Permission.FUNDS_WITHDRAW);=======>>>>>>>origin/pr/20 Map<String,String>params=parseParams(exchange);int accountNumber=parseAccountNumber(params.get("accountNumber"));double amount=parseAmount(params.get("amount"));OperationResult result=bank.withdraw(accountNumber,amount).join();respond(exchange,statusFor(result),resultJson(result));
-        }
-    }
-
-    private final class TransferHandler extends JsonHandler {
-        @Override
-        protected void handleInternal(HttpExchange exchange) throws Exception {
-            ensureMethod(exchange,"POST");<<<<<<<HEAD requirePermission(exchange,Permission.FUNDS_TRANSFER);=======>>>>>>>origin/pr/20 Map<String,String>params=parseParams(exchange);int source=parseAccountNumber(params.get("sourceAccount"));int target=parseAccountNumber(params.get("targetAccount"));double amount=parseAmount(params.get("amount"));OperationResult result=bank.transfer(source,target,amount).join();respond(exchange,statusFor(result),resultJson(result));<<<<<<<HEAD>>>>>>>origin/pr/19:src/main/java/banking/api/BankHttpServer.java
-        }
-    }
-
-    private Optional<Double> parseDouble(String value, String fieldName) {
-        if (value == null || value.isBlank()) {
-            return Optional.empty();
-        }
+    private OperationResult join(CompletableFuture<OperationResult> future) {
         try {
-            return Optional.of(Double.parseDouble(value));
-        } catch (NumberFormatException e) {
-            throw new ClientErrorException(400, "Invalid " + fieldName + ": " + value);
-        }
-    }
-
-    private double parseRequiredAmount(Map<String, String> params, String key) {
-        String rawAmount = params.get(key);
-        if (rawAmount == null || rawAmount.isBlank()) {
-            throw new ClientErrorException(400, "Parameter '" + key + "' is required");
-        }
-        double amount = parseDouble(rawAmount, key).orElse(0.0);
-        if (amount <= 0.0) {
-            throw new ClientErrorException(400, "Amount must be greater than zero");
-        }
-        return amount;
-    }
-
-    private int parseRequiredInt(Map<String, String> params, String primaryKey, String message, String... aliases) {
-        String value = params.get(primaryKey);
-        if (value == null || value.isBlank()) {
-            for (String alias : aliases) {
-                value = params.get(alias);
-                if (value != null && !value.isBlank()) {
-                    break;
-                }
-            }
-        }
-        if (value == null || value.isBlank()) {
-            throw new ClientErrorException(400, message);
-=======
-        }
-    }
-
-    private int parseAccountNumber(String value) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("Account number is required");
->>>>>>> origin/pr/20
-        }
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-<<<<<<< HEAD
-            throw new ClientErrorException(400, "Invalid integer for parameter '" + primaryKey + "': " + value);
-        }
-    }
-
-    private String firstPresent(Map<String, String> params, String primary, String... aliases) {
-        String value = params.get(primary);
-        if (value != null && !value.isBlank()) {
-            return value;
-        }
-        for (String alias : aliases) {
-            value = params.get(alias);
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
-        return null;
-    }
-
-    private String formatAmount(double amount) {
-        return String.format(Locale.ROOT, "%.2f", amount);
-    }
-
-    private enum OperationType {
-        DEPOSIT,
-        WITHDRAW,
-        TRANSFER
-    }
-
-    private static final class ClientErrorException extends RuntimeException {
-        private final int statusCode;
-
-        ClientErrorException(int statusCode, String message) {
-            super(message);
-            this.statusCode = statusCode;
-        }
-    }=======throw new IllegalArgumentException("Invalid account number: "+value);
-
-    }}
-
-    private double parseAmount(String value) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("Amount is required");
-        }
-        try {
-            return Double.parseDouble(value);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Invalid amount: " + value);
+            return future.get(OPERATION_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            throw new IllegalStateException("Operation timed out", e);
         }
     }
 
@@ -783,26 +445,57 @@ public class BankHttpServer {
     }
 
     private String resultJson(OperationResult result) {
-        return '{' + "\"success\":" + result.isSuccess()
-                + ",\"message\":\"" + escape(result.getMessage()) + "\"}";
+        return "{" +
+                "\"success\":" + result.isSuccess() + "," +
+                "\"message\":\"" + escape(result.getMessage()) + "\"" +
+                "}";
+    }
+
+    private int parseAccountNumber(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("accountNumber is required");
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid account number: " + value);
+        }
+    }
+
+    private double parseAmount(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("amount is required");
+        }
+        try {
+            double amount = Double.parseDouble(value.trim());
+            if (amount <= 0) {
+                throw new IllegalArgumentException("amount must be positive");
+            }
+            return amount;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid amount: " + value);
+        }
     }
 
     private String accountJson(Account account) {
-        String balance = String.format(Locale.US, "%.2f", account.getBalance());
-        return '{' + new StringJoiner(",")
-                .add("\"accountNumber\":" + account.getAccountNumber())
-                .add("\"holder\":\"" + escape(account.getUserName()) + "\"")
-                .add("\"type\":\"" + escape(account.getAccountType()) + "\"")
-                .add("\"balance\":" + balance)
-                .toString() + '}';
+        return "{" +
+                "\"accountNumber\":" + account.getAccountNumber() + "," +
+                "\"userName\":\"" + escape(account.getUserName()) + "\"," +
+                "\"accountType\":\"" + escape(account.getAccountType()) + "\"," +
+                "\"balance\":\"" + String.format(Locale.US, "%.2f", account.getBalance()) + "\"" +
+                "}";
     }
 
-    private String escape(String value) {
+    private void ensureMethod(HttpExchange exchange, String expected) {
+        if (!expected.equalsIgnoreCase(exchange.getRequestMethod())) {
+            throw new IllegalArgumentException("Unsupported HTTP method: " + exchange.getRequestMethod());
+        }
+    }
+
+    private static String escape(String value) {
         if (value == null) {
             return "";
         }
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
-
-    >>>>>>>origin/pr/20
 }

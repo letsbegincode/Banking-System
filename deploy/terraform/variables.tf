@@ -87,9 +87,3 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
-
-variable "api_key" {
-  description = "API key used to authenticate HTTP requests"
-  type        = string
-  sensitive   = true
-}

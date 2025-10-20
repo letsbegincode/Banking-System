@@ -37,20 +37,15 @@ spec:
                 secretKeyRef:
                   name: banking-config
                   key: BANKING_DB_PASSWORD
-            - name: BANKING_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: banking-config
-                  key: BANKING_API_KEY
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /health
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 15
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /health
               port: 8080
             initialDelaySeconds: 15
             periodSeconds: 20

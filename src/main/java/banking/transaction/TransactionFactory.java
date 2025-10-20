@@ -20,13 +20,13 @@ public final class TransactionFactory {
         String transactionId = snapshot.transactionId();
         double amount = snapshot.amount();
         return switch (type) {
-            case DEPOSIT -> new DepositTransaction(amount, timestamp, transactionId);
-            case WITHDRAWAL -> new WithdrawalTransaction(amount, timestamp, transactionId);
-            case INTEREST -> new InterestTransaction(amount, timestamp, transactionId);
+            case DEPOSIT -> new DepositTransaction(amount, transactionId, timestamp);
+            case WITHDRAWAL -> new WithdrawalTransaction(amount, transactionId, timestamp);
+            case INTEREST -> new InterestTransaction(amount, transactionId, timestamp);
             case TRANSFER_OUT -> new TransferTransaction(amount,
-                    Objects.requireNonNull(snapshot.targetAccount(), "targetAccount"), timestamp, transactionId);
+                    Objects.requireNonNull(snapshot.targetAccount(), "targetAccount"), transactionId, timestamp);
             case TRANSFER_IN -> new TransferReceiveTransaction(amount,
-                    Objects.requireNonNull(snapshot.sourceAccount(), "sourceAccount"), timestamp, transactionId);
+                    Objects.requireNonNull(snapshot.sourceAccount(), "sourceAccount"), transactionId, timestamp);
         };
     }
 }

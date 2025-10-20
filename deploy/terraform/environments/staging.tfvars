@@ -8,5 +8,4 @@ api_cpu_target_utilization  = 55
 jdbc_url                    = "jdbc:mysql://staging-banking.cluster.internal:3306/banking?useSSL=true&requireSSL=true&serverTimezone=UTC"
 db_username                 = "banking_app"
 db_password                 = ""
-api_key                     = "staging-api-key"
 console_schedule            = "0 2 * * *"

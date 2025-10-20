@@ -40,13 +40,12 @@ graph TD
    find src -name '*.java' > sources.txt
    javac -d build/classes @sources.txt
    ```
-3. Export the database connection (replace the credentials/host with your environment) and API key:
+3. Export the database connection (replace the credentials/host with your environment):
    ```bash
    export BANKING_STORAGE_MODE=jdbc
    export BANKING_JDBC_URL="jdbc:mysql://localhost:3306/banking?useSSL=true&requireSSL=false&serverTimezone=UTC"
    export BANKING_DB_USER="bank_user"
    export BANKING_DB_PASSWORD="ChangeMe123!"
-   export BANKING_API_KEY="local-dev-key"
    ```
 4. Run database migrations:
    ```bash
@@ -64,17 +63,18 @@ graph TD
    ```bash
    java -cp build/classes banking.api.ApiApplication
    ```
-3. In a separate terminal, create and manage accounts via `curl` (replace `<ACCOUNT_NUMBER>` with the identifier returned by the creation call). Every request **must** include the API key header:
+3. In a separate terminal, request an operator token and exercise the API (replace `<ACCOUNT_NUMBER>` with the value returned by the creation call). Every request **must** include the bearer token header:
    ```bash
-   curl -H "X-API-Key: $BANKING_API_KEY" -X POST "http://localhost:8080/accounts" -d "userName=Grace&accountType=savings&initialDeposit=1000"
-   curl -H "X-API-Key: $BANKING_API_KEY" "http://localhost:8080/accounts"
-   curl -H "X-API-Key: $BANKING_API_KEY" "http://localhost:8080/accounts/<ACCOUNT_NUMBER>"
-   curl -H "X-API-Key: $BANKING_API_KEY" -X PUT "http://localhost:8080/accounts/<ACCOUNT_NUMBER>" -d "userName=Grace%20Hopper"
-   curl -H "X-API-Key: $BANKING_API_KEY" -X DELETE "http://localhost:8080/accounts/<ACCOUNT_NUMBER>"
+   TOKEN=$(curl -s -X POST "http://localhost:8080/auth/login" -d "username=admin&password=admin123!" | jq -r .token)
+   curl -H "Authorization: Bearer $TOKEN" -X POST "http://localhost:8080/accounts" -d "name=Grace&type=savings&deposit=1000"
+   curl -H "Authorization: Bearer $TOKEN" "http://localhost:8080/accounts"
+   curl -H "Authorization: Bearer $TOKEN" "http://localhost:8080/accounts/<ACCOUNT_NUMBER>"
+   curl -H "Authorization: Bearer $TOKEN" -X PUT "http://localhost:8080/accounts/<ACCOUNT_NUMBER>" -d "userName=Grace%20Hopper"
+   curl -H "Authorization: Bearer $TOKEN" -X DELETE "http://localhost:8080/accounts/<ACCOUNT_NUMBER>"
    ```
-4. Inspect `/metrics` with the API key header to verify uptime, account counts, and queue depth telemetry:
+4. Inspect `/metrics` with the bearer token header to verify uptime, account counts, and queue depth telemetry:
    ```bash
-   curl -H "X-API-Key: $BANKING_API_KEY" "http://localhost:8080/metrics"
+   curl -H "Authorization: Bearer $TOKEN" "http://localhost:8080/metrics"
    ```
 5. Stop the process with `Ctrl+C`; graceful shutdown ensures all in-flight operations complete and state is flushed via `BankDAO.saveBank`.
 
@@ -87,12 +87,12 @@ graph TD
 ### Troubleshooting
 - **Database Connectivity:** Validate `BANKING_JDBC_URL`, username, and password. `mysql -h <host> -u <user> -p` should succeed from the host where the API runs.
 - **Schema Drift:** Re-run `bash deploy/scripts/run-migrations.sh` after promoting new releases so the schema version matches the application expectations.
-- **Authentication Errors:** Ensure every HTTP request includes the `X-API-Key` header. Rotate the key by updating the Kubernetes secret or environment variable and restarting the workload.
+- **Authentication Errors:** Ensure every HTTP request includes the `Authorization: Bearer <token>` header. Issue a new token from the console or `/auth/login` endpoint if the current token expires.
 - **Snapshot Mode Testing:** When experimenting with the filesystem repository locally, unset `BANKING_STORAGE_MODE` and ensure `BANKING_DATA_PATH` points to a writable location.
 
 ### Container & Infrastructure Automation
 - **Docker Compose:** `docker compose -f deploy/compose/docker-compose.yml up` builds the console/API images and provisions a local MySQL container wired with matching environment variables for parity with staging. Tear down with `docker compose ... down` when finished.
-- **Terraform Deployments:** Export `TF_VAR_db_password` and `TF_VAR_api_key` (or inject them via your secrets manager) before applying `deploy/terraform/environments/<env>.tfvars`. The module creates Kubernetes secrets, deployments, and autoscaling policies that expect a managed MySQL endpoint defined by `jdbc_url`.
+- **Terraform Deployments:** Export `TF_VAR_db_password` (or inject via your secrets manager) before applying `deploy/terraform/environments/<env>.tfvars`. The module creates Kubernetes secrets, deployments, and autoscaling policies that expect a managed MySQL endpoint defined by `jdbc_url`.
 
 ## Roadmap
 1. **Observability Enhancements:** Ship structured logs to a centralized aggregator and publish RED metrics for key flows.
