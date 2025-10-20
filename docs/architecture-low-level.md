@@ -176,6 +176,11 @@ Relational persistence stores serialized `Account` aggregates for durability whi
 
 `JdbcAccountRepository` uses optimistic serialization: operations deserialize payloads when executing, rely on domain rules for validation, then write updated payloads back within a single JDBC transaction. Additional tables can be introduced by adding new migration scripts; `MigrationRunner` will detect and apply them automatically on startup.
 
+### Cache Subsystem
+- **Abstraction:** `banking.cache.CacheProvider<K,V>` defines `get`, `put`, and invalidation primitives. The default `InMemoryCacheProvider` wraps a thread-safe map with TTL handling so cached accounts and balances expire predictably.
+- **Configuration:** `CacheProviderFactory` inspects `CACHE_PROVIDER` / `banking.cache.provider` to decide between the in-memory provider and `NoOpCacheProvider`. TTL defaults to five minutes but can be overridden globally (`CACHE_TTL_SECONDS`) or per cache (`CACHE_ACCOUNT_TTL_SECONDS`, `CACHE_BALANCE_TTL_SECONDS`). Non-positive TTLs disable expiry.
+- **Integration:** `Bank` seeds the cache during startup, repopulates entries on reads, and evicts them on account closure. Mutating operations (`DepositOperation`, `WithdrawOperation`, `TransferOperation`, interest accrual) refresh both the account and balance caches after persistence succeeds.
+
 ## Extension Points
 - **New account type:** Implement a subclass of `Account` and update `AccountFactory` to instantiate it.
 - **Additional operations:** Add a new `AccountOperation` implementation and expose it in `ConsoleUI`.

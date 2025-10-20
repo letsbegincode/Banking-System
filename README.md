@@ -8,7 +8,7 @@ A modular Java banking platform that simulates common retail banking flows such 
 - **Operator Console:** Guided CLI backed by `ConsoleUI` for everyday teller workflows, including quick search and reporting utilities.
 - **HTTP API:** `ApiApplication` wraps the domain layer in a hardened HTTP adapter that exposes health, metrics, account discovery, account maintenance, and transaction queuing endpoints suitable for automation and integration tests.
 - **Observability:** Observer pattern connects `ConsoleNotifier` and `TransactionLogger` to important account events for traceability.
-- **Persistence:** `AccountRepository` pluggably stores serialized account aggregates. The default in-memory repository is ideal for demos, while the JDBC implementation targets relational databases with migration support.
+- **Persistence & Caching:** `AccountRepository` pluggably stores serialized account aggregates. The default in-memory repository is ideal for demos, while the JDBC implementation targets relational databases with migration support. `CacheProvider` instances sit in front of the repository to accelerate hot-path reads and can be swapped or disabled via configuration.
 
 ## Architecture Overview
 The application uses a layered design built around the `Bank` aggregate:
@@ -29,6 +29,11 @@ graph TD
     Account -->|records| BaseTransaction
 ```
 
+## Caching Configuration
+- **Providers:** `CacheProviderFactory` selects an implementation based on `CACHE_PROVIDER` (or JVM property `banking.cache.provider`). The default `memory` option enables the in-process `InMemoryCacheProvider`, while `none` switches to the no-op adapter for troubleshooting or environments that prefer cold reads.
+- **Scope:** The `Bank` service uses caches for full `Account` snapshots and derived balances, warming them on startup and keeping entries coherent after every successful mutation.
+- **TTLs:** Entries expire after five minutes unless overridden with `CACHE_TTL_SECONDS`. Specify per-cache TTLs with `CACHE_ACCOUNT_TTL_SECONDS` and `CACHE_BALANCE_TTL_SECONDS`. Setting a TTL to zero or a negative value disables expiration for that cache.
+
 ## Operations Runbooks
 
 > Need a step-by-step workstation guide? Follow the [Windows 11 setup instructions](docs/setup-windows.md) for tooling installation, environment variables, and local bootstrap commands.
@@ -41,12 +46,15 @@ graph TD
    javac -d build/classes @sources.txt
    ```
 3. Export the database connection (replace the credentials/host with your environment):
-   ```bash
-   export BANKING_STORAGE_MODE=jdbc
-   export BANKING_JDBC_URL="jdbc:mysql://localhost:3306/banking?useSSL=true&requireSSL=false&serverTimezone=UTC"
-   export BANKING_DB_USER="bank_user"
-   export BANKING_DB_PASSWORD="ChangeMe123!"
-   ```
+ ```bash
+  export BANKING_STORAGE_MODE=jdbc
+  export BANKING_JDBC_URL="jdbc:mysql://localhost:3306/banking?useSSL=true&requireSSL=false&serverTimezone=UTC"
+  export BANKING_DB_USER="bank_user"
+  export BANKING_DB_PASSWORD="ChangeMe123!"
+  # Optional cache tuning
+  export CACHE_PROVIDER=memory         # or "none" to disable caching entirely
+  export CACHE_TTL_SECONDS=600         # override per-cache TTL with CACHE_ACCOUNT_TTL_SECONDS / CACHE_BALANCE_TTL_SECONDS
+  ```
 4. Run database migrations:
    ```bash
    bash deploy/scripts/run-migrations.sh
