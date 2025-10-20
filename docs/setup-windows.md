@@ -1,6 +1,10 @@
 # Windows 11 Local Environment Setup
 
+See also: [Helper.md](./Helper.md) — concise build & test commands you can copy-paste.
+
 This guide walks through preparing a Windows 11 workstation to build, run, and operate the Banking System project entirely from scratch. Follow the steps in order; each section builds on the previous one.
+
+
 
 ## 1. Prerequisites
 - Windows 11 (21H2 or later) with administrator privileges.
