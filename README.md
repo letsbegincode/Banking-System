@@ -3,7 +3,7 @@
 A modular Java banking platform that simulates common retail banking flows such as onboarding customers, managing multi-type accounts, and executing money-movement operations with audit trails. The system prioritizes correctness, extensibility, and an operator-friendly console experience.
 
 ## Documentation Hub
-- Browse the curated knowledge base in the [project wiki]([wiki/Home.md](https://github.com/letsbegincode/Banking-System.wiki.git) for quick-start guides, architecture summaries, operations runbooks, and troubleshooting tips.
+- Browse the curated knowledge base in the [project wiki](https://github.com/letsbegincode/Banking-System.wiki.git) for quick-start guides, architecture summaries, operations runbooks, and troubleshooting tips.
 - Detailed reference material continues to live under the [`docs/`](docs) directory for deep dives into specific subsystems.
 
 ## Product Summary
